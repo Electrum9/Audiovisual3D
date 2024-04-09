@@ -1,1 +1,2 @@
 -r fins/requirements.txt
+tensorboard
