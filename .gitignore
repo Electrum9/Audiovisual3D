@@ -1,4 +1,6 @@
-dataset/*
+fins/dataset/*
+fins/logs/*
+fins/checkpoints/*
 
 ## PYTHON
 # Byte-compiled / optimized / DLL files

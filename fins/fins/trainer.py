@@ -3,6 +3,7 @@ from datetime import datetime
 import torch
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
+from torch.cuda.amp import autocast, GradScaler
 from torch.nn.utils import clip_grad_norm_
 import matplotlib.pyplot as plt
 
@@ -126,37 +127,45 @@ class Trainer:
             self.model.train()
 
             torch.cuda.empty_cache()
+
+            scaler = GradScaler()
+
             for i, batch in enumerate(self.train_data):
-                rir = batch['rir'].to(self.device)
+                with autocast(dtype=torch.float16):
+                    rir = batch['rir'].to(self.device)
 
-                # Make batch data
-                (
-                    reverberated_source_with_noise,
-                    reverberated_source,
-                    batch_stochastic_noise,
-                    batch_noise_condition,
-                ) = self.make_batch_data(batch)
+                    # Make batch data
+                    (
+                        reverberated_source_with_noise,
+                        reverberated_source,
+                        batch_stochastic_noise,
+                        batch_noise_condition,
+                    ) = self.make_batch_data(batch)
 
-                # Model forward
-                predicted_rir = self.model(
-                    reverberated_source_with_noise, batch_stochastic_noise, batch_noise_condition
-                )
+                    # Model forward
+                    predicted_rir = self.model(
+                        reverberated_source_with_noise, batch_stochastic_noise, batch_noise_condition
+                    )
 
-                total_loss = 0.0
+                    total_loss = 0.0
 
-                # Compute loss
-                stft_loss_dict = self.stft_loss_fn(predicted_rir, rir)
-                stft_loss = stft_loss_dict["total"]
-                sc_loss = stft_loss_dict["sc_loss"].item()
-                mag_loss = stft_loss_dict["mag_loss"].item()
+                    # Compute loss
+                    stft_loss_dict = self.stft_loss_fn(predicted_rir, rir)
+                    stft_loss = stft_loss_dict["total"]
+                    sc_loss = stft_loss_dict["sc_loss"].item()
+                    mag_loss = stft_loss_dict["mag_loss"].item()
 
-                total_loss = total_loss + stft_loss
+                    total_loss = total_loss + stft_loss
 
-                self.optimizer.zero_grad()
-                total_loss.backward()
-                clip_grad_norm_(self.model.parameters(), self.config.gradient_clip_value)
+                    self.optimizer.zero_grad()
+                    #total_loss.backward()
+                    scaler.scale(total_loss).backward()
+                    scaler.unscale_(self.optimizer)
+                    clip_grad_norm_(self.model.parameters(), self.config.gradient_clip_value)
 
-                self.optimizer.step()
+                    # self.optimizer.step()
+                    scaler.step(self.optimizer)
+                    scaler.update()
 
                 if i % 10 == 0:
                     print(
