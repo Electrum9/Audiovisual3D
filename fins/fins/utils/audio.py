@@ -1,4 +1,5 @@
 import torch
+import torchaudio
 import scipy.signal
 import numpy as np
 from typing import List
@@ -10,12 +11,22 @@ def load_audio(path, target_sr: int = 48000, mono=False, offset=0.0, duration=No
     """
     return y : shape=(n_channels, n_samples)
     """
-    y, orig_sr = librosa.load(path, sr=None, mono=mono, offset=offset, duration=duration)
+    #y, orig_sr = librosa.load(path, sr=None, mono=mono, offset=offset, duration=duration)
+    y, orig_sr = torchaudio.load(path, normalize=False)
 
     if target_sr:
-        y = resample(y, orig_sr=orig_sr, target_sr=target_sr)
+        y = y.to(dtype=torch.float32)
+        #y = resample(y, orig_sr=orig_sr, target_sr=target_sr)
+        torchaudio.functional.resample(y, orig_freq=orig_sr, new_freq=target_sr)
 
-    return np.atleast_2d(y)
+    assert not torch.any(y.isnan()).item()
+    y = y.numpy()
+    assert not np.any(np.isnan(y)).item()
+
+    y = np.atleast_2d(y)
+    assert not np.any(np.isnan(y)).item()
+
+    return y
 
 
 def resample(signal: np.ndarray, orig_sr: int, target_sr: int, **kwargs) -> np.ndarray:

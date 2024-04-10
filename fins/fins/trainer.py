@@ -123,29 +123,31 @@ class Trainer:
         )
 
     def train(self):
+        scaler = GradScaler()
+
         for epoch in range(self.args.resume_step, self.config.num_epochs):
             self.model.train()
 
             torch.cuda.empty_cache()
 
-            scaler = GradScaler()
-
             for i, batch in enumerate(self.train_data):
-                with autocast(dtype=torch.float16):
-                    rir = batch['rir'].to(self.device)
+                rir = batch['rir'].to(self.device)
 
-                    # Make batch data
-                    (
-                        reverberated_source_with_noise,
-                        reverberated_source,
-                        batch_stochastic_noise,
-                        batch_noise_condition,
-                    ) = self.make_batch_data(batch)
+                # Make batch data
+                (
+                    reverberated_source_with_noise,
+                    reverberated_source,
+                    batch_stochastic_noise,
+                    batch_noise_condition,
+                ) = self.make_batch_data(batch)
 
+                with autocast(enabled=True):
                     # Model forward
                     predicted_rir = self.model(
                         reverberated_source_with_noise, batch_stochastic_noise, batch_noise_condition
                     )
+
+                    assert not torch.any(predicted_rir.isnan()).item()
 
                     total_loss = 0.0
 
