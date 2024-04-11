@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.jit as jit
 from torch.nn.utils import spectral_norm
 
 from fins.utils.audio import (
@@ -224,8 +225,10 @@ class FilteredNoiseShaper(nn.Module):
         # Learned decoder input
         self.decoder_input = nn.Parameter(torch.randn((1, 1, config.decoder_input_length)))  # 1,1,400
         self.encoder = Encoder()
+        # self.encoder = jit.script(Encoder())
 
         self.decoder = Decoder(config.num_filters, config.noise_condition_length + config.z_size)
+        # self.decoder = jit.script(Decoder(config.num_filters, config.noise_condition_length + config.z_size))
 
         # Learned "octave-band" like filter
         self.filter = nn.Conv1d(
@@ -250,6 +253,7 @@ class FilteredNoiseShaper(nn.Module):
         self.register_buffer("mask", mask)
         self.output_conv = nn.Conv1d(config.num_filters + 1, 1, kernel_size=1, stride=1)
 
+    @profile
     def forward(self, x, stochastic_noise, noise_condition):
         """
         args:
@@ -260,27 +264,27 @@ class FilteredNoiseShaper(nn.Module):
             rir: shape=(batch_size, 1, rir_samples)
         """
         b, _, _ = x.size()
-        assert not torch.any(x.isnan()).item()
+        # assert not torch.any(x.isnan()).item()
 
         # Filter random noise signal
         filtered_noise = self.filter(stochastic_noise)
 
         # Encode the reverberated speech
         z = self.encoder(x)
-        assert not torch.any(z.isnan()).item()
+        # assert not torch.any(z.isnan()).item()
 
         # Make condition vector
         condition = torch.cat([z, noise_condition], dim=-1)
-        assert not torch.any(condition.isnan()).item()
+        # assert not torch.any(condition.isnan()).item()
 
         # Learnable decoder input. Repeat it in the batch dimension.
         decoder_input = self.decoder_input.repeat(b, 1, 1)
-        assert not torch.any(decoder_input.isnan()).item()
+        # assert not torch.any(decoder_input.isnan()).item()
 
         # Generate RIR
         direct_early, late_mask = self.decoder(decoder_input, condition)
-        assert not torch.any(direct_early.isnan()).item()
-        assert not torch.any(late_mask.isnan()).item()
+        # assert not torch.any(direct_early.isnan()).item()
+        # assert not torch.any(late_mask.isnan()).item()
 
         # Apply mask to the filtered noise to get the late part
         late_part = filtered_noise * late_mask
@@ -292,7 +296,7 @@ class FilteredNoiseShaper(nn.Module):
 
         # Sum
         rir = self.output_conv(rir)
-        assert not torch.any(rir.isnan()).item()
+        # assert not torch.any(rir.isnan()).item()
 
         return rir
 

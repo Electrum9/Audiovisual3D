@@ -122,6 +122,7 @@ class Trainer:
             batch_noise_condition,
         )
 
+    @profile
     def train(self):
         scaler = GradScaler()
 
@@ -147,7 +148,7 @@ class Trainer:
                         reverberated_source_with_noise, batch_stochastic_noise, batch_noise_condition
                     )
 
-                    assert not torch.any(predicted_rir.isnan()).item()
+                    # assert not torch.any(predicted_rir.isnan()).item()
 
                     total_loss = 0.0
 

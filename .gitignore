@@ -1,3 +1,5 @@
+*.lprof
+
 *.pt
 *.pth
 fins/dataset/*

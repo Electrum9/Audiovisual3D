@@ -19,12 +19,12 @@ def load_audio(path, target_sr: int = 48000, mono=False, offset=0.0, duration=No
         #y = resample(y, orig_sr=orig_sr, target_sr=target_sr)
         torchaudio.functional.resample(y, orig_freq=orig_sr, new_freq=target_sr)
 
-    assert not torch.any(y.isnan()).item()
+    # assert not torch.any(y.isnan()).item()
     y = y.numpy()
-    assert not np.any(np.isnan(y)).item()
+    # assert not np.any(np.isnan(y)).item()
 
     y = np.atleast_2d(y)
-    assert not np.any(np.isnan(y)).item()
+    # assert not np.any(np.isnan(y)).item()
 
     return y
 

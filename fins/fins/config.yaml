@@ -30,7 +30,7 @@ model:
 train:
   params:
     sr: *sr
-    batch_size: 64
+    batch_size: 16
     num_workers: 9
     lr: 0.000055
     lr_step_size : 80
