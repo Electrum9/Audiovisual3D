@@ -253,7 +253,7 @@ class FilteredNoiseShaper(nn.Module):
         self.register_buffer("mask", mask)
         self.output_conv = nn.Conv1d(config.num_filters + 1, 1, kernel_size=1, stride=1)
 
-    @profile
+    # @profile
     def forward(self, x, stochastic_noise, noise_condition):
         """
         args:

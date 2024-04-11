@@ -122,7 +122,7 @@ class Trainer:
             batch_noise_condition,
         )
 
-    @profile
+    # @profile
     def train(self):
         scaler = GradScaler()
 
