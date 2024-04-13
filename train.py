@@ -20,8 +20,7 @@ def preprocess(feed_dict, args):
     images = feed_dict["images"]
     audio = feed_dict["audio"]
     depths = feed_dict["depths"]
-    audio_cond = fins(audio)
-    return images, depths, audio_cond
+    return images, depths, audio
 
 def train_model(args):
     av_dataset = None # TODO
@@ -66,10 +65,10 @@ def train_model(args):
 
         feed_dict = next(train_loader)
 
-        images_gt, depths_gt, audio_cond = preprocess(feed_dict, args)
+        images_gt, depths_gt, audio = preprocess(feed_dict, args)
         read_time = time.time() - read_start_time
 
-        depths_pred = model(images_gt, audio_cond)
+        depths_pred = model(images_gt, audio)
 
         loss = depth_loss(depths_pred, depths_gt)
 

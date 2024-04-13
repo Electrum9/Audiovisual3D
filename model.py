@@ -1,6 +1,9 @@
+
+from diffusers import DDIMScheduler, StableDiffusionPipeline
 import torch
 import torch.nn.functional as F
-from diffusers import DDIMScheduler, StableDiffusionPipeline
+
+from fins.model import Encoder
 
 # shape defs:
 # B: batch size
@@ -12,10 +15,11 @@ class AudioVisualModel(nn.Module):
         super(AudioVisualModel, self).__init__()
         self.device = args.device
         self.batch_size = args.batch_size
+        self.fins = Encoder()
         self.unet = None # TODO
 
-    def forward(self, images, audio_cond):
+    def forward(self, images, audio):
         # images shape: (B, H, W)
         # audio_cond shape: (B, M)
+        audio_cond = self.fins(audio)
         # TODO
-        pass
