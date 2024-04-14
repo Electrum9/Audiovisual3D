@@ -42,9 +42,7 @@ def get_rgb(mesh, camera, renderer, lights):
 # TODO: verify that it outputs depths correctly
 def get_depth_map(mesh, camera, rasterizer):
     fragments = rasterizer(mesh, cameras=camera)
-    depth_map = fragment.zbuf[:,:,:,0] / fragment.zbuf[:,:,:,0].max() * 255
-    depth_map = np.expand_dims(np.array(depth_map), 3).repeat(3,3)
-    depth_map = depth_map.astype(np.uint8) 
+    depth_map = fragment.zbuf[:,:,:,0] / fragment.zbuf[:,:,:,0].max()
     return depth_map
     
 def save_rgb(rgb, i):
