@@ -37,11 +37,11 @@ def get_random_camera():
     )
     
 def get_rgb(mesh, camera, renderer, lights):
-    rend = renderer(model, cameras=cameras, lights=lights)
+    rend = renderer(mesh, cameras=camera, lights=lights)
     return (rend.detach().cpu().numpy()[0, ..., :3] * 255).astype(np.uint8)
 
 # TODO: verify that it outputs depths correctly
-def get_depth_map(mesh, camera, rasterizer, shader):
+def get_depth_map(mesh, camera, rasterizer):
     fragments = rasterizer(mesh.extend(num_views), cameras=camera)
     depth_map = fragment.zbuf[:,:,:,0] / fragment.zbuf[:,:,:,0].max() * 255
     depth_map = np.expand_dims(np.array(depth_map), 3).repeat(3,3)
@@ -70,7 +70,6 @@ if __name__ == "__main__":
     rasterizer = pytorch3d.renderer.MeshRasterizer(
         raster_settings=raster_settings,
     )
-    shader = pytorch3d.renderer.HardPhongShader(device=device)
     renderer = pytorch3d.renderer.MeshRenderer(
         rasterizer=rasterizer,
         shader=shader,
@@ -81,5 +80,5 @@ if __name__ == "__main__":
         mesh, audio = get_random_datapoint()
         camera = get_random_camera()
         rgb = get_rgb(mesh, camera, renderer, lights)
-        depth_map = get_depth_map(mesh, camera, rasterizer, shader)
+        depth_map = get_depth_map(mesh, camera, rasterizer)
         save_datapoint(rgb, depth_map, audio, i)
