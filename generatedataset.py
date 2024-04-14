@@ -1,0 +1,89 @@
+
+import imageio
+import os
+from random import random
+import shutil
+
+import numpy as np
+import pytorch3d
+
+N = 1000
+image_size = 512
+device = "cuda"
+
+num_datapoints = None # TODO
+datapoint_locations = [] # TODO; the path to the rooms
+
+def get_datapoint(path):
+    # TODO
+    # get (mesh, audio) tuple in dataset determined by `path`
+    pass
+
+def get_random_datapoint():
+    return get_datapoint(datapoint_locations[int(random() * num_datapoint)])
+
+def get_random_camera():
+    R, T = pytorch3d.renderer.look_at_view_transform(
+        dist = 3.0, # TODO: maybe change? # np.linspace(6, 0, num_views, endpoint=False),
+        elev = 0,
+        azim=random() * 360 - 180 # np.linspace(-180, 180, num_views, endpoint=False),
+        azim = 0
+    )
+
+    many_cameras = pytorch3d.renderer.FoVPerspectiveCameras(
+        R=R,
+        T=T,
+        device=device
+    )
+    
+def get_rgb(mesh, camera, renderer, lights):
+    rend = renderer(model, cameras=cameras, lights=lights)
+    return (rend.detach().cpu().numpy()[0, ..., :3] * 255).astype(np.uint8)
+
+# TODO: get raw data instead?
+def get_depth_map(mesh, camera, rasterizer, shader):
+    fragments = rasterizer(mesh.extend(num_views), cameras=camera)
+    depth = fragment.zbuf[:,:,:,0] / fragment.zbuf[:,:,:,0].max() * 255
+    depth = np.expand_dims(np.array(depth), 3).repeat(3,3)
+    depth = depth.astype(np.uint8) 
+    image = shader(fragments, meshes.extend(num_views), cameras=many_cameras)[:,:,:,0:3] * 255
+    image = np.array(image).astype(np.uint8)
+    return image
+    
+def save_rgb(rgb, i):
+    # TODO
+    pass
+    
+def save_depth_map(depth_map, i):
+    # TODO
+    pass
+    
+def save_audio(audio, i):
+    # TODO
+    pass
+    
+def save_datapoint(rgb, depth_map, audio, i):
+    save_rgb(rgb, i)
+    save_depth_map(depth_map, i)
+    save_audio(audio, i)
+
+if __name__ == "__main__":
+    shutil.rmtree("data")
+    os.makedirs("data")
+    raster_settings = pytorch3d.renderer.RasterizationSettings(image_size=image_size)
+    rasterizer = pytorch3d.renderer.MeshRasterizer(
+        raster_settings=raster_settings,
+    )
+    shader = pytorch3d.renderer.HardPhongShader(device=device)
+    renderer = pytorch3d.renderer.MeshRenderer(
+        rasterizer=rasterizer,
+        shader=shader,
+    )
+    lights = None # TODO? I'm not sure if we can use shader instead
+    for i in range(N):
+        os.makedirs(f"data/{i}")
+        mesh, audio = get_random_datapoint()
+        camera = get_random_camera()
+        rgb = get_rgb(mesh, camera, renderer, lights)
+        depth_map = get_depth_map(mesh, camera, rasterizer, shader)
+        save_datapoint(rgb, depth_map, audio, i)
