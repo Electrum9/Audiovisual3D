@@ -1,5 +1,4 @@
 
-import imageio
 import os
 from random import random
 import shutil
@@ -20,7 +19,7 @@ def get_datapoint(path):
     pass
 
 def get_random_datapoint():
-    return get_datapoint(datapoint_locations[int(random() * num_datapoint)])
+    return get_datapoint(datapoint_locations[int(random() * num_datapoints)])
 
 def get_random_camera():
     R, T = pytorch3d.renderer.look_at_view_transform(
@@ -42,7 +41,7 @@ def get_rgb(mesh, camera, renderer, lights):
 
 # TODO: verify that it outputs depths correctly
 def get_depth_map(mesh, camera, rasterizer):
-    fragments = rasterizer(mesh.extend(num_views), cameras=camera)
+    fragments = rasterizer(mesh, cameras=camera)
     depth_map = fragment.zbuf[:,:,:,0] / fragment.zbuf[:,:,:,0].max() * 255
     depth_map = np.expand_dims(np.array(depth_map), 3).repeat(3,3)
     depth_map = depth_map.astype(np.uint8) 
