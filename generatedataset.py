@@ -26,7 +26,7 @@ def get_random_camera():
     R, T = pytorch3d.renderer.look_at_view_transform(
         dist = 3.0, # TODO: maybe change? # np.linspace(6, 0, num_views, endpoint=False),
         elev = 0,
-        azim=random() * 360 - 180 # np.linspace(-180, 180, num_views, endpoint=False),
+        azim=random() * 360 - 180, # np.linspace(-180, 180, num_views, endpoint=False),
         azim = 0
     )
 
