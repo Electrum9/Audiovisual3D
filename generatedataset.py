@@ -40,27 +40,23 @@ def get_rgb(mesh, camera, renderer, lights):
     rend = renderer(model, cameras=cameras, lights=lights)
     return (rend.detach().cpu().numpy()[0, ..., :3] * 255).astype(np.uint8)
 
-# TODO: get raw data instead?
+# TODO: verify that it outputs depths correctly
 def get_depth_map(mesh, camera, rasterizer, shader):
     fragments = rasterizer(mesh.extend(num_views), cameras=camera)
-    depth = fragment.zbuf[:,:,:,0] / fragment.zbuf[:,:,:,0].max() * 255
-    depth = np.expand_dims(np.array(depth), 3).repeat(3,3)
-    depth = depth.astype(np.uint8) 
-    image = shader(fragments, meshes.extend(num_views), cameras=many_cameras)[:,:,:,0:3] * 255
-    image = np.array(image).astype(np.uint8)
-    return image
+    depth_map = fragment.zbuf[:,:,:,0] / fragment.zbuf[:,:,:,0].max() * 255
+    depth_map = np.expand_dims(np.array(depth_map), 3).repeat(3,3)
+    depth_map = depth_map.astype(np.uint8) 
+    return depth_map
     
 def save_rgb(rgb, i):
-    # TODO
-    pass
+    np.save(f"data/{i}/rgb.npy", audio)
     
 def save_depth_map(depth_map, i):
-    # TODO
-    pass
+    np.save(f"data/{i}/depthmap.npy", audio)
     
 def save_audio(audio, i):
-    # TODO
-    pass
+    # not really sure what format this is lol
+    np.save(f"data/{i}/audio.npy", audio)
     
 def save_datapoint(rgb, depth_map, audio, i):
     save_rgb(rgb, i)
