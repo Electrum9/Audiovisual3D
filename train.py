@@ -8,9 +8,25 @@ import numpy as np
 import torch
 from model import AudioVisualModel
 
-def depth_loss(depth_pred, depth_gt):
-    # TODO
+def loss_sstrim(diff):
+    B, M = diff.shape
+    diff_abs = torch.abs(diff)
+    diff_abs_sorted, _ = torch.sort(diff_abs, dim = 1)
+    trimmed = diff_abs_sorted[:, :int(M * .8)]
+    return 1 / (2 * M) * torch.sum(trimmed, dim = 1)
+    
+def loss_reg(diff, grad):
+    # TODO: not sure of shape of grad
     pass
+
+def depth_loss(depth_pred, depth_gt, grad):
+    # input: pred and gt of shape (B, H, W), grad of shape ???
+    # output: losses of shape (B,)
+    B = depth_pred.shape[0]
+    depth_pred_1d = depth_pred.view(B, -1)
+    depth_gt_1d = depth_gt.view(B, -1)
+    diff = depth_pred_1d - depth_gt_1d
+    return loss_sstrim(diff) + loss_reg(diff, grad)
 
 def preprocess(feed_dict, args):
     images = feed_dict["images"]
@@ -71,7 +87,8 @@ def train_model(args):
 
         depths_pred = model(images_gt, audio)
 
-        loss = depth_loss(depths_pred, depths_gt)
+        grad = None # TODO: not sure how to retrieve this
+        loss = depth_loss(depths_pred, depths_gt, grad)
 
         optimizer.zero_grad()
         loss.backward()
