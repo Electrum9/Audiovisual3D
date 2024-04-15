@@ -17,7 +17,7 @@ def loss_sstrim(diff):
     
 def loss_reg(diff, grad):
     # TODO: not sure of shape of grad
-    pass
+    return 0
 
 def depth_loss(depth_pred, depth_gt, grad):
     # input: pred and gt of shape (B, H, W), grad of shape ???
