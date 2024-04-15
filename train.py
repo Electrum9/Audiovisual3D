@@ -9,13 +9,6 @@ def depth_loss(depth_pred, depth_gt):
     # TODO
     pass
 
-def fins(audio):
-    # TODO: call the (pretrained?) FiNS model on the raw audio data
-    # input could be: B audio files, B raw-data audio, etc
-    # IDEA: sample a random, ~15s audio sample and pass that into FiNS?
-    # idk how this step works help me vik
-    pass
-
 def preprocess(feed_dict, args):
     images = feed_dict["images"]
     audio = feed_dict["audio"]
