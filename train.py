@@ -1,7 +1,10 @@
 import argparse
 import time
 
+import os
+
 import imageio
+import numpy as np
 import torch
 from model import AudioVisualModel
 
@@ -14,24 +17,30 @@ def preprocess(feed_dict, args):
     audio = feed_dict["audio"]
     depths = feed_dict["depths"]
     return images, depths, audio
+    
+class AVLoader(object):
+    def __init__(self, args):
+        points = os.listdir("data/")
+        self.n = len(points)
+        self.B = args.batch_size
+        self.images_shape = (self.B, args.image_size, args.image_size)
+        self.audio_shape = (self.B, None) # TODO
+        self.depths_shape = (self.B, None, None) # TODO
+    def next_datapoint(self):
+        res = {}
+        images = np.zeros(self.images_shape)
+        audio = np.zeros(self.audio_shape)
+        depths = np.zeros(self.depths_shape)
+        for i in range(self.B):
+            images[i] = np.load(f"data/{i}/rgb.npy")
+            audio[i] = np.load(f"data/{i}/audio.npy")
+            depths[i] = np.load(f"data/{i}/depths.npy")
+        res["images"] = torch.from_numpy(images)
+        res["audio"] = torch.from_numpy(audio)
+        res["depths"] = torch.from_numpy(depths)
+        return res
 
 def train_model(args):
-    av_dataset = None # TODO
-    
-    loader = None # TODO; should look something like the commented code below
-    """
-    loader = torch.utils.data.DataLoader(
-        av_dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        collate_fn=???,
-        pin_memory=True,
-        drop_last=True,
-        shuffle=True,
-    )
-    """
-    train_loader = iter(loader)
-
     model = AudioVisualModel(args)
     model.to(args.device)
     model.train()
@@ -39,6 +48,8 @@ def train_model(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     start_iter = 0
     start_time = time.time()
+    
+    loader = AVLoader(args)
 
     if args.load_checkpoint:
         checkpoint = torch.load(f"checkpoint_{args.type}.pth")
@@ -50,13 +61,10 @@ def train_model(args):
     print("Starting training !")
     for step in range(start_iter, args.max_iter):
         iter_start_time = time.time()
-
-        if step % len(train_loader) == 0:  # restart after one epoch
-            train_loader = iter(loader)
+        
+        feed_dict = loader.next_datapoint()
 
         read_start_time = time.time()
-
-        feed_dict = next(train_loader)
 
         images_gt, depths_gt, audio = preprocess(feed_dict, args)
         read_time = time.time() - read_start_time
@@ -98,6 +106,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--image_size", default=512, type=int)
     parser.add_argument('--device', default='cuda', type=str)
     parser.add_argument("--max_iter", default=100000, type=int)
     parser.add_argument("--save_freq", default=2000, type=int)
