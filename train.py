@@ -19,7 +19,7 @@ def loss_reg(diff, grad):
     # TODO: not sure of shape of grad
     return 0
 
-def depth_loss(depth_pred, depth_gt, grad):
+def loss_midas(depth_pred, depth_gt, grad):
     # input: pred and gt of shape (B, H, W), grad of shape ???
     # output: losses of shape (B,)
     B = depth_pred.shape[0]
@@ -27,6 +27,21 @@ def depth_loss(depth_pred, depth_gt, grad):
     depth_gt_1d = depth_gt.view(B, -1)
     diff = depth_pred_1d - depth_gt_1d
     return loss_sstrim(diff) + loss_reg(diff, grad)
+    
+def loss_log(depth_pred, depth_gt):
+    depth_pred_1d = depth_pred.view(B, -1)
+    depth_gt_1d = depth_gt.view(B, -1)
+    pred_log = torch.log(depth_pred_1d)
+    gt_log = torch.log(depth_gt_1d)
+    diff = pred_log - gt_log
+    B, M = diff.shape
+    alpha = -1 / M * torch.sum(diff, dim = 1)
+    losses = diff + alpha
+    losses = losses * losses
+    return torch.sum(losses, dim = 1)
+    
+def depth_loss(depth_pred, depth_gt):
+    return loss_log(depth_pred, depth_gt)
 
 def preprocess(feed_dict, args):
     images = feed_dict["images"]
@@ -88,7 +103,7 @@ def train_model(args):
         depths_pred = model(images_gt, audio)
 
         grad = None # TODO: not sure how to retrieve this
-        loss = depth_loss(depths_pred, depths_gt, grad)
+        loss = depth_loss(depths_pred, depths_gt)
 
         optimizer.zero_grad()
         loss.backward()
