@@ -10,30 +10,27 @@ N = 1000
 image_size = 512
 device = "cuda"
 
-num_datapoints = None # TODO
-datapoint_locations = [] # TODO; the path to the rooms
-
-def get_datapoint(path):
-    # TODO
-    # get (mesh, audio) tuple in dataset determined by `path`
-    pass
-
 def get_random_datapoint():
-    return get_datapoint(datapoint_locations[int(random() * num_datapoints)])
+    # TODO: Lee
+    # output: dataset tuple (audio, origin, mic location, spaker location, boundaries, mesh)
+
+def apply_augmentation(image):
+    # TODO: Vik
+    # output: image with random augmentation applied
 
 def get_random_camera():
     R, T = pytorch3d.renderer.look_at_view_transform(
-        dist = 3.0, # TODO: maybe change? # np.linspace(6, 0, num_views, endpoint=False),
+        dist = 3.0,
         elev = 0,
-        azim=random() * 360 - 180, # np.linspace(-180, 180, num_views, endpoint=False),
-        azim = 0
+        azim=random() * 360 - 180,
     )
 
-    many_cameras = pytorch3d.renderer.FoVPerspectiveCameras(
+    camera = pytorch3d.renderer.FoVPerspectiveCameras(
         R=R,
         T=T,
         device=device
     )
+    return camera
     
 def get_rgb(mesh, camera, renderer, lights):
     rend = renderer(mesh, cameras=camera, lights=lights)
