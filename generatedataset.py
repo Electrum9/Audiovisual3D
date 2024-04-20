@@ -1,24 +1,59 @@
 
+import glob
 import math
 import os
 from random import random
 import shutil
 
-import numpy as np
+import torch
 import pytorch3d
 from pytorch3d.renderer.lighting import PointLights
+from pytorch3d.io import load_objs_as_meshes
 
 from torchvision.transforms import v2
 import numpy as np
 
-N = 1000
+N = 10000
 image_size = 512
 device = "cuda"
 
+def get_datapoint(pt_path):
+    pt = torch.load(pt_path)
+    room = pt['room']
+    if room =='conference':
+        room_obj_path = 'path_to_conference.obj'
+    elif room == 'treatedroom':
+        room_obj_path = 'path_to_treatedroom.obj'
+    elif room == 'livingroom':
+        room_obj_path = 'path_to_livingroom.obj'
+
+    if pt['audio_mic_pos'] is None:
+        pass
+    else:
+        audio = pt['convovled_audio']
+        audio_mic = pt['audio_mic_pos']
+        room_mics_pos = pt['mic_pos'] 
+        audio_mic_pos = room_mics_pos[int(audio_mic)]
+        speaker_pos = pt['speaker_pos']
+        mesh = load_objs_as_meshes(room_obj_path)
+        x_len = max(abs(pt['x_max']), abs(pt['x_min']))
+        y_len = max(abs(pt['y_max']), abs(pt['y_min']))
+        if room =='conference':
+            height_len = 1.4906 #centered around zero [-1.4906, 1.4906]
+        elif room == 'treatedroom':
+            height_len = 1.513 #centered around zero [-1.513, 1.513]
+        elif room == 'livingroom':
+            height_len = 2.6372 #centered around zero [-2.6372, 2.6372]
+            
+        boundaries = np.array([[-x_len, -y_len, -height_len],
+                                [x_len, y_len, height_len]])
+        # TODO: Lee
+        # output: dataset tuple (audio, origin, mic location, spaker location, boundaries, mesh)
+    return (audio, np.array([[0, 0, 0]]), audio_mic_pos, speaker_pos, boundaries, mesh)
+
 def get_random_datapoint():
-    # TODO: Lee
-    # output: dataset tuple (audio, origin, mic location, spaker location, boundaries, mesh)
-    return
+    paths = glob.glob("conference*.pt") + glob.glob("treatedroom*.pt")
+    return get_datapoint(paths[int(random() * len(paths))])
 
 def apply_augmentation(image):
     # output: image with random augmentation applied
@@ -54,7 +89,7 @@ def get_rgb(mesh, camera, renderer, lights):
 
 def get_depth_map(mesh, camera, rasterizer):
     fragments = rasterizer(mesh, cameras=camera)
-    depth_map = fragment.zbuf[:,:,:,0] / fragment.zbuf[:,:,:,0].max()
+    depth_map = fragments.zbuf[:,:,:,0] / fragments.zbuf[:,:,:,0].max()
     return depth_map
     
 def choose_random(a, b):
