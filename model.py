@@ -17,7 +17,7 @@ class AudioVisualModel(nn.Module):
         self.batch_size = args.batch_size
 
         # self.fins = Encoder()
-        fins_config = load_config(args.fin_config)
+        fins_config = load_config(args.fins_config)
         self.fins = FilteredNoiseShaper(fins_config.model.params)
 
         # TODO: Find better way to first get encoder, and only load encoder weights
