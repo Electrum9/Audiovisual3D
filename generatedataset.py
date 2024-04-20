@@ -74,11 +74,15 @@ def get_random_camera(boundaries):
     elev = choose_random(-45.0, 45.0)
     direc = [math.cos(elev) * math.sin(azim), math.sin(elev), math.cos(elev) * math.cos(azim)]
     pdb.set_trace()
-    R = pytorch3d.renderer.look_at_rotation(camera_loc, direc)
+    R, T = pytorch3d.renderer.look_at_view_transform(
+        dist = 0.0,
+        azim = azim,
+        elev = elev,
+        at = camera_loc)
 
     camera = pytorch3d.renderer.FoVPerspectiveCameras(
         R=R,
-        T=camera_loc,
+        T=T,
         device=device
     )
     return camera
