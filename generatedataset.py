@@ -6,6 +6,9 @@ import shutil
 import numpy as np
 import pytorch3d
 
+from torchvision.transforms import v2
+import numpy as np
+
 N = 1000
 image_size = 512
 device = "cuda"
@@ -13,10 +16,20 @@ device = "cuda"
 def get_random_datapoint():
     # TODO: Lee
     # output: dataset tuple (audio, origin, mic location, spaker location, boundaries, mesh)
+    return
 
 def apply_augmentation(image):
-    # TODO: Vik
     # output: image with random augmentation applied
+    augmentations = [v2.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.)),
+                     v2.RandomPosterize(bits=2),
+                     v2.RandomAdjustSharpness(sharpness_factor=2),
+                     v2.RandomAutocontrast()
+                     ]
+
+    aug_idx = np.random.choice(len(augmentations),1)
+    aug = augmentations[aug_idx]
+    
+    return aug(image)
 
 def get_random_camera():
     R, T = pytorch3d.renderer.look_at_view_transform(
