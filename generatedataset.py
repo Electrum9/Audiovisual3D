@@ -5,15 +5,15 @@ import os
 from random import random
 import shutil
 
+import numpy as np
+
 import torch
 import pytorch3d
 from pytorch3d.renderer.lighting import PointLights
 from pytorch3d.io import load_objs_as_meshes
-
 from torchvision.transforms import v2
-import numpy as np
 
-N = 10000
+N = 10
 image_size = 512
 device = "cuda"
 
@@ -52,7 +52,7 @@ def get_datapoint(pt_path):
     return (audio, np.array([[0, 0, 0]]), audio_mic_pos, speaker_pos, boundaries, mesh)
 
 def get_random_datapoint():
-    paths = glob.glob("conference*.pt") + glob.glob("treatedroom*.pt")
+    paths = glob.glob("orig_data/conference*.pt") + glob.glob("orig_data/treatedroom*.pt")
     return get_datapoint(paths[int(random() * len(paths))])
 
 def apply_augmentation(image):
