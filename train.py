@@ -1,52 +1,87 @@
 import argparse
 import time
 
+import os
+
 import imageio
+import numpy as np
 import torch
 from model import AudioVisualModel
 
-def depth_loss(depth_pred, depth_gt):
-    # TODO
-    pass
+def loss_sstrim(diff):
+    B, M = diff.shape
+    diff_abs = torch.abs(diff)
+    diff_abs_sorted, _ = torch.sort(diff_abs, dim = 1)
+    trimmed = diff_abs_sorted[:, :int(M * .8)]
+    return 1 / (2 * M) * torch.sum(trimmed, dim = 1)
+    
+def loss_reg(diff, grad):
+    # TODO: not sure of shape of grad
+    return 0
 
-def fins(audio):
-    # TODO: call the (pretrained?) FiNS model on the raw audio data
-    # input could be: B audio files, B raw-data audio, etc
-    # IDEA: sample a random, ~15s audio sample and pass that into FiNS?
-    # idk how this step works help me vik
-    pass
+def loss_midas(depth_pred, depth_gt, grad):
+    # input: pred and gt of shape (B, H, W), grad of shape ???
+    # output: losses of shape (B,)
+    B = depth_pred.shape[0]
+    depth_pred_1d = depth_pred.view(B, -1)
+    depth_gt_1d = depth_gt.view(B, -1)
+    diff = depth_pred_1d - depth_gt_1d
+    return loss_sstrim(diff) + loss_reg(diff, grad)
+    
+def loss_log(depth_pred, depth_gt):
+    depth_pred_1d = depth_pred.view(B, -1)
+    depth_gt_1d = depth_gt.view(B, -1)
+    pred_log = torch.log(depth_pred_1d)
+    gt_log = torch.log(depth_gt_1d)
+    diff = pred_log - gt_log
+    B, M = diff.shape
+    alpha = -1 / M * torch.sum(diff, dim = 1)
+    losses = diff + alpha
+    losses = losses * losses
+    return torch.sum(losses, dim = 1)
+    
+def depth_loss(depth_pred, depth_gt):
+    return loss_log(depth_pred, depth_gt)
 
 def preprocess(feed_dict, args):
     images = feed_dict["images"]
     audio = feed_dict["audio"]
     depths = feed_dict["depths"]
-    audio_cond = fins(audio)
-    return images, depths, audio_cond
+    return images, depths, audio
+    
+class AVLoader(object):
+    def __init__(self, args):
+        points = os.listdir("data/")
+        self.n = len(points)
+        self.B = args.batch_size
+        self.images_shape = (self.B, args.image_size, args.image_size)
+        self.audio_shape = (self.B, None) # TODO
+        self.depths_shape = (self.B, None, None) # TODO
+    def next_datapoint(self):
+        res = {}
+        images = np.zeros(self.images_shape)
+        audio = np.zeros(self.audio_shape)
+        depths = np.zeros(self.depths_shape)
+        for i in range(self.B):
+            images[i] = np.load(f"data/{i}/rgb.npy")
+            audio[i] = np.load(f"data/{i}/audio.npy")
+            depths[i] = np.load(f"data/{i}/depths.npy")
+        res["images"] = torch.from_numpy(images)
+        res["audio"] = torch.from_numpy(audio)
+        res["depths"] = torch.from_numpy(depths)
+        return res
 
 def train_model(args):
-    av_dataset = None # TODO
-    
-    loader = None # TODO; should look something like the commented code below
-    """
-    loader = torch.utils.data.DataLoader(
-        av_dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        collate_fn=???,
-        pin_memory=True,
-        drop_last=True,
-        shuffle=True,
-    )
-    """
-    train_loader = iter(loader)
-
     model = AudioVisualModel(args)
+    breakpoint()
     model.to(args.device)
     model.train()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     start_iter = 0
     start_time = time.time()
+    
+    loader = AVLoader(args)
 
     if args.load_checkpoint:
         checkpoint = torch.load(f"checkpoint_{args.type}.pth")
@@ -58,19 +93,17 @@ def train_model(args):
     print("Starting training !")
     for step in range(start_iter, args.max_iter):
         iter_start_time = time.time()
-
-        if step % len(train_loader) == 0:  # restart after one epoch
-            train_loader = iter(loader)
+        
+        feed_dict = loader.next_datapoint()
 
         read_start_time = time.time()
 
-        feed_dict = next(train_loader)
-
-        images_gt, depths_gt, audio_cond = preprocess(feed_dict, args)
+        images_gt, depths_gt, audio = preprocess(feed_dict, args)
         read_time = time.time() - read_start_time
 
-        depths_pred = model(images_gt, audio_cond)
+        depths_pred = model(images_gt, audio)
 
+        grad = None # TODO: not sure how to retrieve this
         loss = depth_loss(depths_pred, depths_gt)
 
         optimizer.zero_grad()
@@ -106,9 +139,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--image_size", default=512, type=int)
     parser.add_argument('--device', default='cuda', type=str)
     parser.add_argument("--max_iter", default=100000, type=int)
     parser.add_argument("--save_freq", default=2000, type=int)
     parser.add_argument("--load_checkpoint", action="store_true")
+    parser.add_argument("--fins_config", default='./fins/fins/config.yaml', type=str)
+    parser.add_argument("--fins_checkpoint", default='./fins/checkpoints/epoch-20.pt', type=str)
+    parser.add_argument("--train_fins", default=False, type=bool)
+    parser.add_argument("--backbone", default='resnet50', type=str)
+    parser.add_argument("--backbone_freeze", default=False, type=bool)
+    parser.add_argument("--backbone_pretrained", default=True, type=bool)
+    parser.add_argument("--audio_attn_block", default=False, type=bool)
+
     args = parser.parse_args()
     train_model(args)
