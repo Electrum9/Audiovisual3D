@@ -29,6 +29,13 @@ class AudioVisualModel(nn.Module):
         # image shape (B, 512, 512, 3)
         # transpose to (B, 3, 512, 512)
         # reshape to (B, 512, 512)
+        self.unet = Unet(backbone=args.backbone, 
+                         encoder_freeze=args.backbone_freeze, 
+                         pretrained=args.backbone_pretrained, 
+                         preprocessing=True, 
+                         in_channels=3,
+                         num_classes=1,
+                         )
         self.sigmoid = nn.Sigmoid() # (B, 512, 512)
 
     def forward(self, images, audio):
@@ -37,5 +44,9 @@ class AudioVisualModel(nn.Module):
         audio_cond = self.fins(audio)
         B, M = audio_cond.shape
         print(audio_cond.shape) # to find out M
+
         res = images.permute(0, 3, 1, 2) # (B, 3, H, W)
+        res = self.unet(res, audio_cond)
+        res = self.sigmoid(res)
+
         return res
