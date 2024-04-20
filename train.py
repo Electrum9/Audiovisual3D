@@ -73,6 +73,7 @@ class AVLoader(object):
 
 def train_model(args):
     model = AudioVisualModel(args)
+    breakpoint()
     model.to(args.device)
     model.train()
 

@@ -2,8 +2,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from unet import Unet
-from fins.model import FilteredNoiseShaper, Encoder
-from fins.utils.utils import load_config
+from fins.fins.model import FilteredNoiseShaper, Encoder
+from fins.fins.utils.utils import load_config
 
 # shape defs:
 # B: batch size
