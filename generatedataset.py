@@ -4,9 +4,8 @@ import math
 import os
 from random import random
 import shutil
-
+import pdb
 import numpy as np
-
 import torch
 import pytorch3d
 from pytorch3d.io import load_objs_as_meshes
@@ -119,6 +118,7 @@ def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries, mesh):
     return (torch.to_array(audio, device = device), torch.to_array(origin, device = device), torch.to_array(mic_loc, device = device), torch.to_array(spaker_loc, device = device), torch.to_array(boundaries, device = device), torch.to_array(mesh, device = device))
 
 if __name__ == "__main__":
+    pdb.set_trace()
     shutil.rmtree("data", ignore_errors = True)
     os.makedirs("data")
     raster_settings = pytorch3d.renderer.RasterizationSettings(image_size=image_size)
@@ -131,9 +131,10 @@ if __name__ == "__main__":
         shader=shader,
     )
     for i in range(N):
+        
         os.makedirs(f"data/{i}")
-        audio, origin, mic_loc, spaker_loc, boundaries, mesh = get_random_datapoint()
-        audio, origin, mic_loc, spaker_loc, boundaries, mesh = convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries, mesh)
+        audio, origin, mic_loc, speaker_loc, boundaries, mesh = get_random_datapoint()
+        audio, origin, mic_loc, speaker_loc, boundaries, mesh = convert_to_torch(audio, origin, mic_loc, speaker_loc, boundaries, mesh)
         boundaries = set_boundaries_buffer(boundaries, torch.to_array([0.1, 0.05, 0.1], device = device))
         lights = get_random_lighting(boundaries)
         camera = get_random_camera(boundaries)
