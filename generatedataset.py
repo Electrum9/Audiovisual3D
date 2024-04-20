@@ -34,8 +34,8 @@ def get_random_datapoint(pt_path):
         audio_mic_pos = room_mics_pos[int(audio_mic)]
         speaker_pos = pt['speaker_pos']
         mesh = load_objs_as_meshes(room_obj_path)
-        x_len = max(abs(pt['x_max']), abs(pt['x_min']))
-        y_len = max(abs(pt['y_max']), abs(pt['y_min']))
+        x_len = max(abs(pt['x_max']), abs(pt['x_min']))/2
+        y_len = max(abs(pt['y_max']), abs(pt['y_min']))/2
         if room =='conference':
             height_len = 1.4906 #centered around zero [-1.4906, 1.4906]
         elif room == 'treatedroom':
