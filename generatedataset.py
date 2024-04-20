@@ -19,11 +19,11 @@ def get_datapoint(pt_path):
     pt = torch.load(pt_path)
     room = pt['room']
     if room =='conference':
-        room_obj_path = 'path_to_conference.obj'
+        room_obj_path = '/mnt/Mercury2/CMU16825/soundcam/scans/ConferenceRoom/poly.obj'
     elif room == 'treatedroom':
-        room_obj_path = 'path_to_treatedroom.obj'
+        room_obj_path = '/mnt/Mercury2/CMU16825/soundcam/scans/TreatedRoom/poly.obj'
     elif room == 'livingroom':
-        room_obj_path = 'path_to_livingroom.obj'
+        room_obj_path = '/mnt/Mercury2/CMU16825/soundcam/scans/LivingRoom/poly.obj'
 
     if pt['audio_mic_pos'] is None:
         pass
@@ -33,7 +33,7 @@ def get_datapoint(pt_path):
         room_mics_pos = pt['mic_pos'] 
         audio_mic_pos = room_mics_pos[int(audio_mic)]
         speaker_pos = pt['speaker_pos']
-        mesh = load_objs_as_meshes(room_obj_path)
+        mesh = load_objs_as_meshes([room_obj_path])
         x_len = max(abs(pt['x_max']), abs(pt['x_min']))/2
         y_len = max(abs(pt['y_max']), abs(pt['y_min']))/2
         if room =='conference':
@@ -69,6 +69,7 @@ def apply_augmentation(image):
 def get_random_camera(boundaries):
     # currently: chooses a random point in the middle of the air
     camera_loc = [choose_random(boundaries[0][0], boundaries[1][0]), (boundaries[0][1] + boundaries[1][1]) / 2, choose_random(boundaries[0][2], boundaries[1][2])]
+    camera_loc = torch.tensor([val.item() for val in camera_loc]).unsqueeze(0)
     azim = choose_random(-180.0, 180.0)
     elev = choose_random(-45.0, 45.0)
     direc = [math.cos(elev) * math.sin(azim), math.sin(elev), math.cos(elev) * math.cos(azim)]
@@ -109,16 +110,19 @@ def save_datapoint(rgb, depth_map, audio, mic_loc, speaker_loc, i):
     np.save(f"data/{i}/micloc.npy", mic_loc.cpu().detach.numpy())
     np.save(f"data/{i}/speakerloc.npy", speaker_loc.cpu().detach.numpy())
 
-def set_boundaries_buffer(boundaries, margin_ratio):
+def set_boundaries_buffer(boundaries, margin):
     size = boundaries[1] - boundaries[0]
     margin = size * margin
-    return torch.to_array([boundaries[0] + margin, boundaries[1] - margin], device = device)
+    boundaries[0,:] += margin
+    boundaries[1,:] -= margin
+    return boundaries
 
-def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries, mesh):
-    return (torch.to_array(audio, device = device), torch.to_array(origin, device = device), torch.to_array(mic_loc, device = device), torch.to_array(spaker_loc, device = device), torch.to_array(boundaries, device = device), torch.to_array(mesh, device = device))
+def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries):
+    
+    return (torch.tensor(audio, device = device), torch.tensor(origin, device = device), torch.tensor(mic_loc, device = device), torch.tensor(spaker_loc, device = device), torch.tensor(boundaries, device = device))
 
 if __name__ == "__main__":
-    pdb.set_trace()
+    
     shutil.rmtree("data", ignore_errors = True)
     os.makedirs("data")
     raster_settings = pytorch3d.renderer.RasterizationSettings(image_size=image_size)
@@ -133,9 +137,12 @@ if __name__ == "__main__":
     for i in range(N):
         
         os.makedirs(f"data/{i}")
+        
         audio, origin, mic_loc, speaker_loc, boundaries, mesh = get_random_datapoint()
-        audio, origin, mic_loc, speaker_loc, boundaries, mesh = convert_to_torch(audio, origin, mic_loc, speaker_loc, boundaries, mesh)
-        boundaries = set_boundaries_buffer(boundaries, torch.to_array([0.1, 0.05, 0.1], device = device))
+        audio, origin, mic_loc, speaker_loc, boundaries = convert_to_torch(audio, origin, mic_loc, speaker_loc, boundaries)
+
+
+        boundaries = set_boundaries_buffer(boundaries, torch.tensor([0.1, 0.05, 0.1], device = device))
         lights = get_random_lighting(boundaries)
         camera = get_random_camera(boundaries)
         rgb = get_rgb(mesh, camera, renderer, lights)
