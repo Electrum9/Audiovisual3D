@@ -36,14 +36,27 @@ class AudioVisualModel(nn.Module):
                          in_channels=3,
                          num_classes=1,
                          )
+
+        self.audio_cond_net = nn.Sequential(nn.Linear(128+3+3, 256),
+                                            nn.ReLU(),
+                                            nn.Linear(256, self.unet.encoder_channels[0]),
+                                            nn.ReLU(),
+                                            )
+
         self.sigmoid = nn.Sigmoid() # (B, 512, 512)
 
-    def forward(self, images, audio):
+    def forward(self, images, audio, speaker_pos, mic_pos):
         # images shape: (B, H, W, 3)
         # audio_cond shape: (B, M)
-        audio_cond = self.fins(audio)
-        B, M = audio_cond.shape
-        print(audio_cond.shape) # to find out M
+        channel_latent = self.fins(audio) # Bx128
+
+        B, M = channel_latent.shape
+        print(channel_latent.shape)
+
+        audio_cond = self.audio_cond_net(torch.cat([channel_latent, # Bx128
+                                                    speaker_pos, # Bx3
+                                                    mic_pos]) # Bx3
+                                         )
 
         res = images.permute(0, 3, 1, 2) # (B, 3, H, W)
         res = self.unet(res, audio_cond)

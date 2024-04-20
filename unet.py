@@ -107,7 +107,7 @@ class Unet(nn.Module):
             backbone, features_only=True, out_indices=backbone_indices, 
             in_chans=in_channels, pretrained=pretrained, **backbone_kwargs
         )
-        encoder_channels = [info["num_chs"] for info in encoder.feature_info][::-1]
+        self.encoder_channels = [info["num_chs"] for info in encoder.feature_info][::-1]
         self.encoder = encoder
         if encoder_freeze: self._freeze_encoder(non_trainable_layers)
         if preprocessing:
@@ -120,7 +120,7 @@ class Unet(nn.Module):
         if not decoder_use_batchnorm:
             norm_layer = None
         self.decoder = UnetDecoder(
-            encoder_channels=encoder_channels,
+            encoder_channels=self.encoder_channels,
             decoder_channels=decoder_channels,
             final_channels=num_classes,
             norm_layer=norm_layer,
@@ -128,12 +128,12 @@ class Unet(nn.Module):
             activation=activation
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, audio_cond: torch.Tensor):
         if self.mean and self.std:
             x = self._preprocess_input(x)
         x = self.encoder(x)
         x.reverse()  
-        x = self.decoder(x)
+        x = self.decoder(x, audio_cond)
         return x
 
     @torch.no_grad()
@@ -249,7 +249,8 @@ class UnetDecoder(nn.Module):
             final_channels=1,
             norm_layer=nn.BatchNorm2d,
             center=True,
-            activation=nn.ReLU
+            activation=nn.ReLU,
+            audio_attn_block=False
     ):
         super().__init__()
 
@@ -261,6 +262,18 @@ class UnetDecoder(nn.Module):
             )
         else:
             self.center = nn.Identity()
+
+        if audio_attn_block:
+            # Spatial Excitation Block: Outputs Bx1xHxW set of scaling factors in interval [0, 1]
+            self.audio_attn_block = nn.Sequential(nn.Conv2d(in_channels=encoder_channels[0], 
+                                                     out_channels=1, 
+                                                     kernel_size=1,
+                                                     ), 
+                                           nn.Sigmoid(),
+                                           )
+        else:
+            self.audio_attn_block = None
+                                                 
 
         # list(decoder_channels[:-1][:len(encoder_channels)])
         in_channels = [in_chs + skip_chs for in_chs, skip_chs in zip(
@@ -287,8 +300,16 @@ class UnetDecoder(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-    def forward(self, x: List[torch.Tensor]):
+    def forward(self, x: List[torch.Tensor], audio_cond: torch.Tensor):
         encoder_head = x[0]
+
+        # audio conditioning
+        if self.audio_attn_block:
+            excitation = self.audio_attn_block(encoder_head) # Bx1xHxW set of attention scores in [0,1]
+            encoder_head = excitation * encoder_head + (1 - excitation) * audio_cond.view(*audio_cond.shape, 1, 1)
+        else:
+            encoder_head = encoder_head + audio_cond.view(*audio_cond.shape, 1, 1) # broadcast along spatial dims
+
         skips = x[1:]
         x = self.center(encoder_head)
         for i, b in enumerate(self.blocks):
