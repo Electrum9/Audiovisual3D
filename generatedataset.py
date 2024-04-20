@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import pytorch3d
 from pytorch3d.io import load_objs_as_meshes
-from torchvision.transforms import v2
+# from torchvision.transforms import v2
 
 N = 10
 image_size = 512
@@ -73,11 +73,11 @@ def get_random_camera(boundaries):
     azim = choose_random(-180.0, 180.0)
     elev = choose_random(-45.0, 45.0)
     direc = [math.cos(elev) * math.sin(azim), math.sin(elev), math.cos(elev) * math.cos(azim)]
-    R, T = pytorch3d.renderer.look_at_rotation(camera_loc, direc)
+    R = pytorch3d.renderer.look_at_rotation(camera_loc, direc)
 
     camera = pytorch3d.renderer.FoVPerspectiveCameras(
         R=R,
-        T=T,
+        T=camera_loc,
         device=device
     )
     return camera
@@ -138,8 +138,8 @@ if __name__ == "__main__":
         lights = get_random_lighting(boundaries)
         camera = get_random_camera(boundaries)
         rgb = get_rgb(mesh, camera, renderer, lights)
-        rgb_aug = apply_augmentation(rgb)
+        # rgb_aug = apply_augmentation(rgb)
         depth_map = get_depth_map(mesh, camera, rasterizer)
         mic_loc_std = to_camera_coords(mic_loc)
         speaker_loc_std = to_camera_coords(speaker_loc)
-        save_datapoint(rgb_aug, depth_map, audio, mic_loc_std, speaker_loc_std, i)
+        save_datapoint(rgb, depth_map, audio, mic_loc_std, speaker_loc_std, i)
