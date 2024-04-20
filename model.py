@@ -35,6 +35,7 @@ class AudioVisualModel(nn.Module):
                          preprocessing=True, 
                          in_channels=3,
                          num_classes=1,
+                         audio_attn_block=args.audio_attn_block
                          )
 
         self.audio_cond_net = nn.Sequential(nn.Linear(128+3+3, 256),
@@ -55,7 +56,8 @@ class AudioVisualModel(nn.Module):
 
         audio_cond = self.audio_cond_net(torch.cat([channel_latent, # Bx128
                                                     speaker_pos, # Bx3
-                                                    mic_pos]) # Bx3
+                                                    mic_pos], 
+                                                   dim=-1) # Bx3
                                          )
 
         res = images.permute(0, 3, 1, 2) # (B, 3, H, W)

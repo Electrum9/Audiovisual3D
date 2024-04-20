@@ -94,7 +94,8 @@ class Unet(nn.Module):
             num_classes=5,
             center=False,
             norm_layer=nn.BatchNorm2d,
-            activation=nn.ReLU
+            activation=nn.ReLU,
+            audio_attn_block=False
     ):
         super().__init__()
         backbone_kwargs = backbone_kwargs or {}
@@ -125,7 +126,8 @@ class Unet(nn.Module):
             final_channels=num_classes,
             norm_layer=norm_layer,
             center=center,
-            activation=activation
+            activation=activation,
+            audio_attn_block=audio_attn_block,
         )
 
     def forward(self, x: torch.Tensor, audio_cond: torch.Tensor):
