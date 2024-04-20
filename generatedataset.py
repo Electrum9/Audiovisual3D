@@ -9,7 +9,6 @@ import numpy as np
 
 import torch
 import pytorch3d
-from pytorch3d.renderer.lighting import PointLights
 from pytorch3d.io import load_objs_as_meshes
 from torchvision.transforms import v2
 
@@ -99,7 +98,7 @@ def get_random_lighting(boundaries):
     # currently: chooses a random point on the ceiling
     random_x = choose_random(boundaries[0][0], boundaries[1][0])
     random_z = choose_random(boundaries[0][2], boundaries[1][2])
-    return PointLights(location=[[random_x, boundaries[1][1], random_z]], device=device)
+    return pytorch3d.renderer.lighting.PointLights(location=[[random_x, boundaries[1][1], random_z]], device=device)
     
 def to_camera_coords(pos, camera):
     return camera.get_world_to_view_transform().transform_points(pos)
@@ -120,12 +119,13 @@ def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries, mesh):
     return (torch.to_array(audio, device = device), torch.to_array(origin, device = device), torch.to_array(mic_loc, device = device), torch.to_array(spaker_loc, device = device), torch.to_array(boundaries, device = device), torch.to_array(mesh, device = device))
 
 if __name__ == "__main__":
-    shutil.rmtree("data")
+    shutil.rmtree("data", ignore_errors = True)
     os.makedirs("data")
     raster_settings = pytorch3d.renderer.RasterizationSettings(image_size=image_size)
     rasterizer = pytorch3d.renderer.MeshRasterizer(
         raster_settings=raster_settings,
     )
+    shader = pytorch3d.renderer.HardPhongShader(device=device)
     renderer = pytorch3d.renderer.MeshRenderer(
         rasterizer=rasterizer,
         shader=shader,
