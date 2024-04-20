@@ -145,7 +145,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_freq", default=2000, type=int)
     parser.add_argument("--load_checkpoint", action="store_true")
     parser.add_argument("--fins_config", default='./fins/fins/config.yaml', type=str)
-    parser.add_argument("--fins_checkpoint", default='./fins/checkpoints/epoch19.pt', type=str)
+    parser.add_argument("--fins_checkpoint", default='./fins/checkpoints/epoch-20.pt', type=str)
     parser.add_argument("--train_fins", default=False, type=bool)
     parser.add_argument("--backbone", default='resnet50', type=str)
     parser.add_argument("--backbone_freeze", default=False, type=bool)
