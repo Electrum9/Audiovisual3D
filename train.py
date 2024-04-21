@@ -1,11 +1,13 @@
 import argparse
-import time
-
+import glob
 import os
+import time
 
 import imageio
 import numpy as np
 import torch
+from torch.utils.data import Dataset, DataLoader
+
 from model import AudioVisualModel
 
 def loss_sstrim(diff):
@@ -43,33 +45,21 @@ def loss_log(depth_pred, depth_gt):
 def depth_loss(depth_pred, depth_gt):
     return loss_log(depth_pred, depth_gt)
 
-def preprocess(feed_dict, args):
-    images = feed_dict["images"]
-    audio = feed_dict["audio"]
-    depths = feed_dict["depths"]
-    return images, depths, audio
-    
-class AVLoader(object):
-    def __init__(self, args):
-        points = os.listdir("data/")
-        self.n = len(points)
-        self.B = args.batch_size
-        self.images_shape = (self.B, args.image_size, args.image_size)
-        self.audio_shape = (self.B, None) # TODO
-        self.depths_shape = (self.B, None, None) # TODO
-    def next_datapoint(self):
-        res = {}
-        images = np.zeros(self.images_shape)
-        audio = np.zeros(self.audio_shape)
-        depths = np.zeros(self.depths_shape)
-        for i in range(self.B):
-            images[i] = np.load(f"data/{i}/rgb.npy")
-            audio[i] = np.load(f"data/{i}/audio.npy")
-            depths[i] = np.load(f"data/{i}/depths.npy")
-        res["images"] = torch.from_numpy(images)
-        res["audio"] = torch.from_numpy(audio)
-        res["depths"] = torch.from_numpy(depths)
-        return res
+class CustomImageDataset(Dataset):
+    def __init__(self, pt_dir):
+        self.pt_dir = pt_dir
+
+    def __len__(self):
+        return len(self.pt_dir)
+
+    def __getitem__(self, idx):
+        feed_dict = torch.load(self.pt_dir[idx])
+        audio = feed_dict['audio']
+        rgb = feed_dict['rgb']
+        micloc = feed_dict['micloc']
+        speakerloc = feed_dict['speakerloc']
+        depth = feed_dict['depth']
+        return rgb, audio, speakerloc, micloc, depth
 
 def train_model(args):
     model = AudioVisualModel(args)
@@ -81,7 +71,10 @@ def train_model(args):
     start_iter = 0
     start_time = time.time()
     
-    loader = AVLoader(args)
+    # loader = AVLoader(args)
+    dataset = CustomImageDataset(glob.glob('*.pt'))
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    train_loader = iter(dataloader)
 
     if args.load_checkpoint:
         checkpoint = torch.load(f"checkpoint_{args.type}.pth")
@@ -98,12 +91,11 @@ def train_model(args):
 
         read_start_time = time.time()
 
-        images_gt, depths_gt, audio = preprocess(feed_dict, args)
+        rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
         read_time = time.time() - read_start_time
 
-        depths_pred = model(images_gt, audio)
+        depths_pred = model(rgb, audio, speaker_pos, mic_pos)
 
-        grad = None # TODO: not sure how to retrieve this
         loss = depth_loss(depths_pred, depths_gt)
 
         optimizer.zero_grad()
