@@ -10,6 +10,7 @@ import torch
 import pytorch3d
 from pytorch3d.io import load_objs_as_meshes
 # from torchvision.transforms import v2
+import matplotlib.pyplot as plt
 
 N = 10
 image_size = 512
@@ -102,14 +103,15 @@ def get_random_lighting(boundaries):
     return pytorch3d.renderer.lighting.PointLights(location=[[random_x, boundaries[1][1], random_z]], device=device)
     
 def to_camera_coords(pos, camera):
-    return camera.get_world_to_view_transform().transform_points(pos)
+    return camera.get_world_to_view_transform().transform_points(pos.float().unsqueeze(0))
     
 def save_datapoint(rgb, depth_map, audio, mic_loc, speaker_loc, i):
-    np.save(f"data/{i}/depthmap.npy", depth_map.cpu().detach.numpy())
-    np.save(f"data/{i}/rgb.npy", rgb.cpu().detach.numpy())
-    np.save(f"data/{i}/audio.npy", audio.cpu().detach.numpy())
-    np.save(f"data/{i}/micloc.npy", mic_loc.cpu().detach.numpy())
-    np.save(f"data/{i}/speakerloc.npy", speaker_loc.cpu().detach.numpy())
+    pdb.set_trace()
+    np.save(f"data/{i}/depthmap.npy", depth_map.numpy())
+    np.save(f"data/{i}/rgb.npy", rgb)
+    np.save(f"data/{i}/audio.npy", audio.detach().cpu().numpy())
+    np.save(f"data/{i}/micloc.npy", mic_loc.detach().cpu().numpy())
+    np.save(f"data/{i}/speakerloc.npy", speaker_loc.detach().cpu().numpy())
 
 def set_boundaries_buffer(boundaries, margin):
     size = boundaries[1] - boundaries[0]
@@ -118,9 +120,9 @@ def set_boundaries_buffer(boundaries, margin):
     boundaries[1,:] -= margin
     return boundaries
 
-def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries):
+def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries, mesh):
     
-    return (torch.tensor(audio, device = device), torch.tensor(origin, device = device), torch.tensor(mic_loc, device = device), torch.tensor(spaker_loc, device = device), torch.tensor(boundaries, device = device))
+    return (torch.tensor(audio, device = device), torch.tensor(origin, device = device), torch.tensor(mic_loc, device = device), torch.tensor(spaker_loc, device = device), torch.tensor(boundaries, device = device), mesh.to(device))
 
 if __name__ == "__main__":
     
@@ -140,14 +142,13 @@ if __name__ == "__main__":
         os.makedirs(f"data/{i}")
         
         audio, origin, mic_loc, speaker_loc, boundaries, mesh = get_random_datapoint()
-        audio, origin, mic_loc, speaker_loc, boundaries = convert_to_torch(audio, origin, mic_loc, speaker_loc, boundaries)
+        audio, origin, mic_loc, speaker_loc, boundaries, mesh = convert_to_torch(audio, origin, mic_loc, speaker_loc, boundaries, mesh)
         boundaries = set_boundaries_buffer(boundaries, torch.tensor([0.1, 0.05, 0.1], device = device))
         lights = get_random_lighting(boundaries)
-        camera = get_random_camera(boundaries)
-        pdb.set_trace()
+        camera = get_random_camera(boundaries)[0]
         rgb = get_rgb(mesh, camera, renderer, lights)
         # rgb_aug = apply_augmentation(rgb)
-        depth_map = get_depth_map(mesh, camera, rasterizer)
-        mic_loc_std = to_camera_coords(mic_loc)
-        speaker_loc_std = to_camera_coords(speaker_loc)
+        depth_map = get_depth_map(mesh, camera, rasterizer).detach().cpu().squeeze()
+        mic_loc_std = to_camera_coords(mic_loc, camera)
+        speaker_loc_std = to_camera_coords(speaker_loc, camera)
         save_datapoint(rgb, depth_map, audio, mic_loc_std, speaker_loc_std, i)
