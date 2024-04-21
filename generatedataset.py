@@ -11,8 +11,9 @@ import pytorch3d
 from pytorch3d.io import load_objs_as_meshes
 # from torchvision.transforms import v2
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
-N = 10
+N = 500
 image_size = 512
 device = "cuda"
 
@@ -27,7 +28,7 @@ def get_datapoint(pt_path):
         room_obj_path = '/mnt/Mercury2/CMU16825/soundcam/scans/LivingRoom/poly.obj'
 
     if pt['audio_mic_pos'] is None:
-        pass
+        return None
     else:
         audio = pt['convovled_audio']
         audio_mic = pt['audio_mic_pos']
@@ -46,13 +47,17 @@ def get_datapoint(pt_path):
             
         boundaries = np.array([[-x_len, -y_len, -height_len],
                                 [x_len, y_len, height_len]])
-        # TODO: Lee
-        # output: dataset tuple (audio, origin, mic location, spaker location, boundaries, mesh)
     return (audio, np.array([[0, 0, 0]]), audio_mic_pos, speaker_pos, boundaries, mesh)
 
 def get_random_datapoint():
-    paths = glob.glob("orig_data/conference*.pt") + glob.glob("orig_data/treatedroom*.pt")
-    return get_datapoint(paths[int(random() * len(paths))])
+    pt_path = '/mnt/Mercury2/CMU16825/soundcam/Audiovisual3D/fins/dataset/convolved_audio_pt'
+    paths = glob.glob(f"{pt_path}/conference*.pt") + glob.glob(f"{pt_path}/treatedroom*.pt")
+    data_pt = get_datapoint(paths[int(random() * len(paths))])
+    
+    while data_pt is None:
+        data_pt = get_datapoint(paths[int(random() * len(paths))])
+        
+    return data_pt
 
 def apply_augmentation(image):
     # output: image with random augmentation applied
@@ -82,7 +87,7 @@ def get_random_camera(boundaries):
         T=torch.inverse(R) @ camera_loc.unsqueeze(-1).squeeze(),
         device=device
     )
-    return camera
+    return camera[0], camera_loc
     
 def get_rgb(mesh, camera, renderer, lights):
     rend = renderer(mesh, cameras=camera, lights=lights)
@@ -90,7 +95,7 @@ def get_rgb(mesh, camera, renderer, lights):
 
 def get_depth_map(mesh, camera, rasterizer):
     fragments = rasterizer(mesh, cameras=camera)
-    depth_map = fragments.zbuf[:,:,:,0] / fragments.zbuf[:,:,:,0].max()
+    depth_map = fragments.zbuf[:,:,:,0] #/ fragments.zbuf[:,:,:,0].max()
     return depth_map
     
 def choose_random(a, b):
@@ -105,13 +110,18 @@ def get_random_lighting(boundaries):
 def to_camera_coords(pos, camera):
     return camera.get_world_to_view_transform().transform_points(pos.float().unsqueeze(0))
     
-def save_datapoint(rgb, depth_map, audio, mic_loc, speaker_loc, i):
-    pdb.set_trace()
-    np.save(f"data/{i}/depthmap.npy", depth_map.numpy())
-    np.save(f"data/{i}/rgb.npy", rgb)
-    np.save(f"data/{i}/audio.npy", audio.detach().cpu().numpy())
-    np.save(f"data/{i}/micloc.npy", mic_loc.detach().cpu().numpy())
-    np.save(f"data/{i}/speakerloc.npy", speaker_loc.detach().cpu().numpy())
+def save_datapoint(rgb, depth_map, audio, camera_loc_world, mic_loc_world, mic_loc_camera, speaker_loc_world, speaker_loc_camera, i):
+    
+    pt = {'depth': depth_map.numpy(),
+          'rgb': rgb,
+          'audio': audio.detach().cpu().numpy(),
+          'cameraloc': camera_loc_world,
+          'micloc_world': mic_loc_world.detach().cpu().numpy(),
+          'micloc_camera': mic_loc_camera.detach().cpu().numpy(),
+          'speakerloc_world': speaker_loc_world.detach().cpu().numpy(),
+          'speakerloc_camera': speaker_loc_camera.detach().cpu().numpy()}
+    
+    torch.save(pt, f"data/{i}.pt")
 
 def set_boundaries_buffer(boundaries, margin):
     size = boundaries[1] - boundaries[0]
@@ -120,6 +130,13 @@ def set_boundaries_buffer(boundaries, margin):
     boundaries[1,:] -= margin
     return boundaries
 
+def convert2world(pt):
+    if len(pt.shape) == 1:
+        pt = pt[None]
+    pt[:,[0, 1, 2]] = pt[:,[0,2,1]]  
+    pt[:, 1] = 0
+    return pt
+
 def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries, mesh):
     
     return (torch.tensor(audio, device = device), torch.tensor(origin, device = device), torch.tensor(mic_loc, device = device), torch.tensor(spaker_loc, device = device), torch.tensor(boundaries, device = device), mesh.to(device))
@@ -127,7 +144,8 @@ def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries, mesh):
 if __name__ == "__main__":
     
     shutil.rmtree("data", ignore_errors = True)
-    os.makedirs("data")
+    os.makedirs('data', exist_ok=True)
+
     raster_settings = pytorch3d.renderer.RasterizationSettings(image_size=image_size)
     rasterizer = pytorch3d.renderer.MeshRasterizer(
         raster_settings=raster_settings,
@@ -137,18 +155,23 @@ if __name__ == "__main__":
         rasterizer=rasterizer,
         shader=shader,
     )
-    for i in range(N):
+    for i in tqdm(range(N)):
         
-        os.makedirs(f"data/{i}")
+        os.makedirs('data', exist_ok=True)
         
         audio, origin, mic_loc, speaker_loc, boundaries, mesh = get_random_datapoint()
         audio, origin, mic_loc, speaker_loc, boundaries, mesh = convert_to_torch(audio, origin, mic_loc, speaker_loc, boundaries, mesh)
-        boundaries = set_boundaries_buffer(boundaries, torch.tensor([0.1, 0.05, 0.1], device = device))
+        boundaries = set_boundaries_buffer(boundaries, torch.tensor([0.15, 0.05, 0.15], device = device))
         lights = get_random_lighting(boundaries)
-        camera = get_random_camera(boundaries)[0]
+        camera, camera_loc_world = get_random_camera(boundaries)
         rgb = get_rgb(mesh, camera, renderer, lights)
         # rgb_aug = apply_augmentation(rgb)
         depth_map = get_depth_map(mesh, camera, rasterizer).detach().cpu().squeeze()
-        mic_loc_std = to_camera_coords(mic_loc, camera)
-        speaker_loc_std = to_camera_coords(speaker_loc, camera)
-        save_datapoint(rgb, depth_map, audio, mic_loc_std, speaker_loc_std, i)
+        
+        mic_loc_world = convert2world(mic_loc)
+        speaker_loc_world = convert2world(speaker_loc)
+        
+        mic_loc_camera = to_camera_coords(mic_loc_world, camera)
+        speaker_loc_camera = to_camera_coords(speaker_loc_world, camera)
+        
+        save_datapoint(rgb, depth_map, audio, camera_loc_world, mic_loc_world, mic_loc_camera, speaker_loc_world, speaker_loc_camera, i)
