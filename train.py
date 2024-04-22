@@ -11,6 +11,8 @@ from torch.utils.data import Dataset, DataLoader
 
 from model import AudioVisualModel
 
+torch.autograd.set_detect_anomaly(False)
+
 def loss_sstrim(diff):
     B, M = diff.shape
     diff_abs = torch.abs(diff)
@@ -33,7 +35,7 @@ def loss_midas(depth_pred, depth_gt, grad):
     
 def loss_log(depth_pred, depth_gt):
     B = depth_pred.shape[0]
-    eps = 1e-12
+    eps = 1e-5
     torch.nn.functional.relu(depth_gt, inplace=True) # clip negative values
     depth_pred_1d = depth_pred.view(B, -1)
     depth_gt_1d = depth_gt.view(B, -1)
@@ -89,7 +91,6 @@ def train_model(args):
     # loader = AVLoader(args)
     dataset = CustomImageDataset(args.dataset_path)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
-    train_loader = iter(dataloader)
 
     model = AudioVisualModel(args)
     model.to(args.device)
@@ -98,7 +99,8 @@ def train_model(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     start_iter = 0
     start_time = time.time()
-    
+
+    scaler = torch.cuda.amp.GradScaler()
 
     if args.load_checkpoint:
         checkpoint = torch.load(f"checkpoint_{args.type}.pth")
@@ -110,26 +112,31 @@ def train_model(args):
     print("Starting training !")
     for step in range(start_iter, args.max_iter):
         iter_start_time = time.time()
-        
         read_start_time = time.time()
+        
+        train_loader = iter(dataloader)
 
-        rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
+        with torch.cuda.amp.autocast(args.mixed_precision):
+            rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
 
-        rgb = rgb.to(args.device)
-        audio = audio.to(args.device)
-        speaker_pos = speaker_pos.to(args.device)
-        mic_pos = mic_pos.to(args.device)
-        depths_gt = depths_gt.to(args.device)
+            rgb = rgb.to(args.device)
+            audio = audio.to(args.device)
+            speaker_pos = speaker_pos.to(args.device)
+            mic_pos = mic_pos.to(args.device)
+            depths_gt = depths_gt.to(args.device)
 
-        read_time = time.time() - read_start_time
+            read_time = time.time() - read_start_time
 
-        depths_pred = model(rgb, audio, speaker_pos, mic_pos)
+            depths_pred = model(rgb, audio, speaker_pos, mic_pos)
 
-        loss = depth_loss(depths_pred, depths_gt)
+        # depths_pred = depths_pred.to(dtype=torch.float32)
+        # depths_gt = depths_gt.to(dtype=torch.float32)
+            loss = depth_loss(depths_pred, depths_gt)
 
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
         total_time = time.time() - start_time
         iter_time = time.time() - iter_start_time
@@ -174,6 +181,7 @@ if __name__ == "__main__":
     parser.add_argument("--audio_attn_block", default=False, type=bool)
     parser.add_argument("--dataset_path", default='data/', type=str)
     parser.add_argument("--lr", default=1e-3, type=float)
+    parser.add_argument("--mixed_precision", default=True, type=bool)
 
     args = parser.parse_args()
     train_model(args)
