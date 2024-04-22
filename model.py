@@ -56,7 +56,6 @@ class AudioVisualModel(nn.Module):
         # speaker pos shape: (B, 1, 1, 3)
         # mic pos shape: (B, 1, 1, 3)
 
-        breakpoint()
         channel_latent = self.fins(audio) # Bx128
 
         combined = torch.cat([channel_latent,           # Bx128

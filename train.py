@@ -32,6 +32,7 @@ def loss_midas(depth_pred, depth_gt, grad):
     return loss_sstrim(diff) + loss_reg(diff, grad)
     
 def loss_log(depth_pred, depth_gt):
+    B = depth_pred.shape[0]
     depth_pred_1d = depth_pred.view(B, -1)
     depth_gt_1d = depth_gt.view(B, -1)
     pred_log = torch.log(depth_pred_1d)
@@ -39,9 +40,11 @@ def loss_log(depth_pred, depth_gt):
     diff = pred_log - gt_log
     B, M = diff.shape
     alpha = -1 / M * torch.sum(diff, dim = 1)
+    alpha = alpha.unsqueeze(-1)
     losses = diff + alpha
     losses = losses * losses
-    return torch.sum(losses, dim = 1)
+
+    return (1 / B) * torch.sum(losses)
     
 def depth_loss(depth_pred, depth_gt):
     return loss_log(depth_pred, depth_gt)
