@@ -33,10 +33,12 @@ def loss_midas(depth_pred, depth_gt, grad):
     
 def loss_log(depth_pred, depth_gt):
     B = depth_pred.shape[0]
+    eps = 1e-12
+    torch.nn.functional.relu(depth_gt, inplace=True) # clip negative values
     depth_pred_1d = depth_pred.view(B, -1)
     depth_gt_1d = depth_gt.view(B, -1)
-    pred_log = torch.log(depth_pred_1d)
-    gt_log = torch.log(depth_gt_1d)
+    pred_log = torch.log(depth_pred_1d + eps)
+    gt_log = torch.log(depth_gt_1d + eps)
     diff = pred_log - gt_log
     B, M = diff.shape
     alpha = -1 / M * torch.sum(diff, dim = 1)

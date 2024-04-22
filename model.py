@@ -48,7 +48,8 @@ class AudioVisualModel(nn.Module):
                                             nn.ReLU(),
                                             )
 
-        self.sigmoid = nn.Sigmoid() # (B, 512, 512)
+        # self.sigmoid = nn.Sigmoid() # (B, 512, 512)
+        self.relu = nn.ReLU()
 
     def forward(self, images, audio, speaker_pos, mic_pos):
         # images shape: (B, H, W, 3)
@@ -67,7 +68,8 @@ class AudioVisualModel(nn.Module):
 
         res = images.permute(0, 3, 1, 2) # (B, 3, H, W)
         res = self.unet(res, audio_cond)
-        res = self.sigmoid(res)
+        # res = self.sigmoid(res)
+        res = self.relu(res)
 
         return res
 
