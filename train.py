@@ -2,6 +2,7 @@ import argparse
 import glob
 import os
 import time
+from pathlib import Path
 
 import imageio
 import numpy as np
@@ -46,24 +47,46 @@ def depth_loss(depth_pred, depth_gt):
     return loss_log(depth_pred, depth_gt)
 
 class CustomImageDataset(Dataset):
-    def __init__(self, pt_dir):
-        self.pt_dir = pt_dir
+    def __init__(self, pt_dir, use_world=False):
+        self.pt_files = list(Path(pt_dir).glob('*.pt'))
+
+        if use_world:
+            self.micloc_key = 'micloc_world'
+            self.speakerloc_key = 'speakerloc_world'
+        else:
+            self.micloc_key = 'micloc_camera'
+            self.speakerloc_key = 'speakerloc_camera'
 
     def __len__(self):
-        return len(self.pt_dir)
+        return len(self.pt_files)
 
     def __getitem__(self, idx):
-        feed_dict = torch.load(self.pt_dir[idx])
-        audio = feed_dict['audio']
-        rgb = feed_dict['rgb']
-        micloc = feed_dict['micloc']
-        speakerloc = feed_dict['speakerloc']
-        depth = feed_dict['depth']
+        feed_dict = torch.load(self.pt_files[idx])
+        audio = feed_dict['audio'].astype(np.float32)
+        rgb = feed_dict['rgb'].astype(np.float32)
+        micloc = feed_dict['micloc_camera']
+        speakerloc = feed_dict['speakerloc_camera'].astype(np.float32)
+        depth = feed_dict['depth'].astype(np.float32)
         return rgb, audio, speakerloc, micloc, depth
 
+def collate_fn(batch):
+
+    maxlen_audio = max(b[1].size for b in batch)
+    stacked_audio = torch.stack([torch.from_numpy(np.pad(b[1], (0, maxlen_audio - b[1].size), 'constant')).unsqueeze(0) for b in batch], dim=0)
+    stacked_rgb = torch.stack([torch.from_numpy(b[0]) for b in batch], dim=0)
+    stacked_speakerloc = torch.stack([torch.from_numpy(b[2]) for b in batch], dim=0)
+    stacked_micloc = torch.stack([torch.from_numpy(b[3]) for b in batch], dim=0)
+    stacked_depth = torch.stack([torch.from_numpy(b[4]) for b in batch], dim=0)
+    
+    return stacked_rgb, stacked_audio, stacked_speakerloc, stacked_micloc, stacked_depth
+
 def train_model(args):
+    # loader = AVLoader(args)
+    dataset = CustomImageDataset(args.dataset_path)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    train_loader = iter(dataloader)
+
     model = AudioVisualModel(args)
-    breakpoint()
     model.to(args.device)
     model.train()
 
@@ -71,10 +94,6 @@ def train_model(args):
     start_iter = 0
     start_time = time.time()
     
-    # loader = AVLoader(args)
-    dataset = CustomImageDataset(glob.glob('*.pt'))
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
-    train_loader = iter(dataloader)
 
     if args.load_checkpoint:
         checkpoint = torch.load(f"checkpoint_{args.type}.pth")
@@ -87,8 +106,6 @@ def train_model(args):
     for step in range(start_iter, args.max_iter):
         iter_start_time = time.time()
         
-        feed_dict = loader.next_datapoint()
-
         read_start_time = time.time()
 
         rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
@@ -143,6 +160,8 @@ if __name__ == "__main__":
     parser.add_argument("--backbone_freeze", default=False, type=bool)
     parser.add_argument("--backbone_pretrained", default=True, type=bool)
     parser.add_argument("--audio_attn_block", default=False, type=bool)
+    parser.add_argument("--dataset_path", default='data/', type=str)
+    parser.add_argument("--lr", default=1e-3, type=float)
 
     args = parser.parse_args()
     train_model(args)
