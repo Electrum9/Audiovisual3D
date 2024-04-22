@@ -53,14 +53,15 @@ class AudioVisualModel(nn.Module):
     def forward(self, images, audio, speaker_pos, mic_pos):
         # images shape: (B, H, W, 3)
         # audio shape: (B, 1, num_samples)
-        # speaker pos shape: (B, 3)
-        # mic pos shape: (B, 3)
+        # speaker pos shape: (B, 1, 1, 3)
+        # mic pos shape: (B, 1, 1, 3)
 
+        breakpoint()
         channel_latent = self.fins(audio) # Bx128
 
-        combined = torch.cat([channel_latent, # Bx128
-                              speaker_pos,    # Bx3
-                              mic_pos],       # Bx3
+        combined = torch.cat([channel_latent,           # Bx128
+                              speaker_pos.squeeze(),    # Bx3
+                              mic_pos.squeeze()],       # Bx3
                               dim=-1) 
 
         audio_cond = self.audio_cond_net(combined)

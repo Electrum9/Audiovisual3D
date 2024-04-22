@@ -109,6 +109,13 @@ def train_model(args):
         read_start_time = time.time()
 
         rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
+
+        rgb = rgb.to(args.device)
+        audio = audio.to(args.device)
+        speaker_pos = speaker_pos.to(args.device)
+        mic_pos = mic_pos.to(args.device)
+        depths_gt = depths_gt.to(args.device)
+
         read_time = time.time() - read_start_time
 
         depths_pred = model(rgb, audio, speaker_pos, mic_pos)
