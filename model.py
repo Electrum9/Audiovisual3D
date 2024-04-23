@@ -7,6 +7,8 @@ from fins.fins.model import FilteredNoiseShaper, Encoder
 from fins.fins.utils.utils import load_config
 import torch_liberator
 
+from midas_net import MidasNet
+
 # shape defs:
 # B: batch size
 # H: image height
@@ -33,18 +35,39 @@ class AudioVisualModel(nn.Module):
         # image shape (B, 512, 512, 3)
         # transpose to (B, 3, 512, 512)
         # reshape to (B, 512, 512)
-        self.unet = Unet(backbone=args.backbone, 
-                         encoder_freeze=args.backbone_freeze, 
-                         pretrained=args.backbone_pretrained, 
-                         preprocessing=True, 
-                         in_channels=3,
-                         num_classes=1,
-                         audio_attn_block=args.audio_attn_block
-                         )
+        self.args = args
+        if args.use_midas:
+            midas_features = 256
+            self.imageaudio_fusion_net = MidasNet(features=midas_features)
+            midas_checkpoint = torch.load(args.midas_checkpoint)
+            torch_liberator.load_partial_state(self.imageaudio_fusion_net, model_state_dict=midas_checkpoint)
+
+            if args.midas_freeze:
+                self.imageaudio_fusion_net.requires_grad_(False)
+                # self.imageaudio_fusion_net.scratch.output_conv.requires_grad_(True)
+
+                # for c in self.imageaudio_fusion_net.scratch.output_conv.children():
+                #     if hasattr(c, 'weight'):
+                #         torch.nn.init.kaiming_normal_(c.weight)
+
+                if self.imageaudio_fusion_net.audio_attn_block:
+                    self.imageaudio_fusion_net.audio_attn_block.requires_grad_(True)
+
+            self.encoder_out_channels = midas_features
+        else:
+            self.encoder_out_channels = self.imageaudio_fusion_net.encoder_channels[0]
+            self.imageaudio_fusion_net = Unet(backbone=args.backbone, 
+                             encoder_freeze=args.backbone_freeze, 
+                             pretrained=args.backbone_pretrained, 
+                             preprocessing=True, 
+                             in_channels=3,
+                             num_classes=1,
+                             audio_attn_block=args.audio_attn_block
+                             )
 
         self.audio_cond_net = nn.Sequential(nn.Linear(128+3+3, 256),
                                             nn.ReLU(),
-                                            nn.Linear(256, self.unet.encoder_channels[0]),
+                                            nn.Linear(256, self.encoder_out_channels),
                                             nn.ReLU(),
                                             )
 
@@ -66,10 +89,12 @@ class AudioVisualModel(nn.Module):
 
         audio_cond = self.audio_cond_net(combined)
 
-        res = images.permute(0, 3, 1, 2) # (B, 3, H, W)
-        res = self.unet(res, audio_cond)
+        res = self.imageaudio_fusion_net(images, audio_cond)
         # res = self.sigmoid(res)
         res = self.relu(res)
+
+        if self.args.use_midas:
+            res = 1 / (res + 1e-5)
 
         return res
 

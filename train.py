@@ -3,6 +3,7 @@ import glob
 import os
 import time
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 import imageio
 import numpy as np
@@ -48,13 +49,14 @@ def loss_log(depth_pred, depth_gt):
     losses = diff + alpha
     losses = losses * losses
 
-    return (1 / B) * torch.sum(losses)
+    return (1/B) * torch.sum(losses)
     
 def depth_loss(depth_pred, depth_gt):
     return loss_log(depth_pred, depth_gt)
 
 class CustomImageDataset(Dataset):
-    def __init__(self, pt_dir, use_world=False):
+    def __init__(self, args, use_world=False):
+        pt_dir = args.dataset_path
         self.pt_files = list(Path(pt_dir).glob('*.pt'))
 
         if use_world:
@@ -64,6 +66,9 @@ class CustomImageDataset(Dataset):
             self.micloc_key = 'micloc_camera'
             self.speakerloc_key = 'speakerloc_camera'
 
+        self.midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+        self.args = args
+
     def __len__(self):
         return len(self.pt_files)
 
@@ -71,25 +76,30 @@ class CustomImageDataset(Dataset):
         feed_dict = torch.load(self.pt_files[idx])
         audio = feed_dict['audio'].astype(np.float32)
         rgb = feed_dict['rgb'].astype(np.float32)
-        micloc = feed_dict['micloc_camera']
-        speakerloc = feed_dict['speakerloc_camera'].astype(np.float32)
-        depth = feed_dict['depth'].astype(np.float32)
+        if self.args.use_midas:
+            rgb = self.midas_transforms.small_transform(rgb).squeeze()
+        else:
+            rgb = torch.from_numpy(rgb)
+            rgb = rgb.permute(2, 0, 1) # (B, 3, H, W)
+        micloc = torch.from_numpy(feed_dict['micloc_camera'])
+        speakerloc = torch.from_numpy(feed_dict['speakerloc_camera'].astype(np.float32))
+        depth = torch.from_numpy(feed_dict['depth'].astype(np.float32))
         return rgb, audio, speakerloc, micloc, depth
 
 def collate_fn(batch):
 
     maxlen_audio = max(b[1].size for b in batch)
     stacked_audio = torch.stack([torch.from_numpy(np.pad(b[1], (0, maxlen_audio - b[1].size), 'constant')).unsqueeze(0) for b in batch], dim=0)
-    stacked_rgb = torch.stack([torch.from_numpy(b[0]) for b in batch], dim=0)
-    stacked_speakerloc = torch.stack([torch.from_numpy(b[2]) for b in batch], dim=0)
-    stacked_micloc = torch.stack([torch.from_numpy(b[3]) for b in batch], dim=0)
-    stacked_depth = torch.stack([torch.from_numpy(b[4]) for b in batch], dim=0)
+    stacked_rgb = torch.stack([b[0] for b in batch], dim=0)
+    stacked_speakerloc = torch.stack([b[2] for b in batch], dim=0)
+    stacked_micloc = torch.stack([b[3] for b in batch], dim=0)
+    stacked_depth = torch.stack([b[4] for b in batch], dim=0)
     
     return stacked_rgb, stacked_audio, stacked_speakerloc, stacked_micloc, stacked_depth
 
 def train_model(args):
     # loader = AVLoader(args)
-    dataset = CustomImageDataset(args.dataset_path)
+    dataset = CustomImageDataset(args)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
 
     model = AudioVisualModel(args)
@@ -138,6 +148,11 @@ def train_model(args):
         scaler.step(optimizer)
         scaler.update()
 
+        img = depths_pred.detach().cpu().numpy()
+        img_gt = depths_gt.detach().cpu().numpy()
+        plt.imsave(f"pred_images/img_{step}.png", img[0,...])
+        plt.imsave(f"gt_images/gt_img_{step}.png", img_gt[0,...])
+
         total_time = time.time() - start_time
         iter_time = time.time() - iter_start_time
 
@@ -180,8 +195,11 @@ if __name__ == "__main__":
     parser.add_argument("--backbone_pretrained", default=True, type=bool)
     parser.add_argument("--audio_attn_block", default=False, type=bool)
     parser.add_argument("--dataset_path", default='data/', type=str)
-    parser.add_argument("--lr", default=1e-3, type=float)
+    parser.add_argument("--lr", default=1e-4, type=float)
     parser.add_argument("--mixed_precision", default=True, type=bool)
+    parser.add_argument("--use_midas", default=False, type=bool)
+    parser.add_argument("--midas_checkpoint", default="./midas_v21_384.pt", type=str)
+    parser.add_argument("--midas_freeze", default=True, type=bool)
 
     args = parser.parse_args()
     train_model(args)
