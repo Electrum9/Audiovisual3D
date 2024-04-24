@@ -22,7 +22,7 @@ def create_parser():
     parser.add_argument("--backbone_freeze", default=False, type=bool)
     parser.add_argument("--backbone_pretrained", default=True, type=bool)
     parser.add_argument("--audio_attn_block", default=False, type=bool)
-    parser.add_argument('--load_checkpoint', type=str, default='model_epoch_0')
+    parser.add_argument('--load_checkpoint', type=str, default='checkpoint_av_10000_noAttention')
     parser.add_argument("--dataset_path", default='data/', type=str)
     return parser
 
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     model = AudioVisualModel(args)
     
     # Load Model Checkpoint
-    model_path = './checkpoints/{}.pt'.format(args.load_checkpoint)
+    model_path = './checkpoint/{}.pth'.format(args.load_checkpoint)
     with open(model_path, 'rb') as f:
         state_dict = torch.load(f, map_location=args.device)
         model.load_state_dict(state_dict)
