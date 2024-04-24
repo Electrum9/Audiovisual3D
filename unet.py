@@ -305,6 +305,7 @@ class UnetDecoder(nn.Module):
     def forward(self, x: List[torch.Tensor], audio_cond: torch.Tensor):
         encoder_head = x[0]
 
+        breakpoint()
         # audio conditioning
         if self.audio_attn_block:
             excitation = self.audio_attn_block(encoder_head) # Bx1xHxW set of attention scores in [0,1]

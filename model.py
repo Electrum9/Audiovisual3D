@@ -55,7 +55,6 @@ class AudioVisualModel(nn.Module):
 
             self.encoder_out_channels = midas_features
         else:
-            self.encoder_out_channels = self.imageaudio_fusion_net.encoder_channels[0]
             self.imageaudio_fusion_net = Unet(backbone=args.backbone, 
                              encoder_freeze=args.backbone_freeze, 
                              pretrained=args.backbone_pretrained, 
@@ -64,6 +63,7 @@ class AudioVisualModel(nn.Module):
                              num_classes=1,
                              audio_attn_block=args.audio_attn_block
                              )
+            self.encoder_out_channels = self.imageaudio_fusion_net.encoder_channels[0]
 
         self.audio_cond_net = nn.Sequential(nn.Linear(128+3+3, 256),
                                             nn.ReLU(),
