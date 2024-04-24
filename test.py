@@ -6,7 +6,7 @@ import pytorch3d
 import torch
 
 from model import AudioVisualModel
-from train import CustomImageDataset
+from train import collate_fn, CustomImageDataset
 
 def create_parser():
     """Creates a parser for command-line arguments.
