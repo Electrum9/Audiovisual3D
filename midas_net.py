@@ -38,17 +38,6 @@ class MidasNet(torch.nn.Module):
 
         super(MidasNet, self).__init__()
 
-        if audio_attn_block:
-            # Spatial Excitation Block: Outputs Bx1xHxW set of scaling factors in interval [0, 1]
-            self.audio_attn_block = nn.Sequential(nn.Conv2d(in_channels=features*8,
-                                                     out_channels=1, 
-                                                     kernel_size=1,
-                                                     ), 
-                                           nn.Sigmoid(),
-                                           )
-        else:
-            self.audio_attn_block = None
-
         use_pretrained = False if path is None else True
 
         self.pretrained, self.scratch = _make_encoder(backbone="resnext101_wsl", features=features, use_pretrained=use_pretrained)
@@ -67,6 +56,15 @@ class MidasNet(torch.nn.Module):
             nn.ReLU(True) if non_negative else nn.Identity(),
         )
 
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+
+        self.scale_translation_net = nn.Sequential(nn.Linear(2304, 1024),
+                                                   nn.ReLU(),
+                                                   nn.Linear(1024, 256),
+                                                   nn.ReLU(),
+                                                   nn.Linear(256, 16)
+                                                   )
+
         if path:
             self.load(path)
 
@@ -80,6 +78,11 @@ class MidasNet(torch.nn.Module):
             tensor: depth
         """
 
+        B, N, C, H, W = x.shape
+        breakpoint()
+
+        x = x.view(-1, C, H, W)
+
         layer_1 = self.pretrained.layer1(x)
         layer_2 = self.pretrained.layer2(layer_1)
         layer_3 = self.pretrained.layer3(layer_2)
@@ -88,13 +91,20 @@ class MidasNet(torch.nn.Module):
         layer_1_rn = self.scratch.layer1_rn(layer_1)
         layer_2_rn = self.scratch.layer2_rn(layer_2)
         layer_3_rn = self.scratch.layer3_rn(layer_3)
-        layer_4_rn = self.scratch.layer4_rn(layer_4)
+        layer_4_rn = self.scratch.layer4_rn(layer_4) # (C, H, W) = (256, 8, 8)
 
-        if self.audio_attn_block:
-            excitation = self.audio_attn_block(layer_4_rn) # Bx1xHxW set of attention scores in [0,1]
-            layer_4_rn = excitation * layer_4_rn + (1 - excitation) * audio_cond.view(*audio_cond.shape, 1, 1)
-        else:
-            layer_4_rn = layer_4_rn + audio_cond.view(*audio_cond.shape, 1, 1) # broadcast along spatial dims
+        # cam_feat_maps = layer_4_rn.view(B, N, C, H, W)
+
+        cam_feat_vecs = self.avg_pool(layer_4_rn) # (B*N, C, 1, 1)
+        cam_feat_vecs = cam_feat_vecs.view(B, -1) # concatenate all these vectors (B, N*C)
+
+        av_fusion_vec = torch.cat([cam_feat_vecs, audio_cond], dim=1) # 2304 = 2048 + 256
+        scale_translation_factors = self.scale_translation_net(av_fusion_vec)
+
+        scale_translation_factors = scale_translation_factors.view(B, 2, -1)
+        breakpoint()
+        scale_translation_factors[:, 0, :] = torch.nn.functional.relu(scale_translation_factors[:, 0, :]) # resolve to positive scaling factors
+        # translations = scale_translation_factors[:, 8:]
 
         path_4 = self.scratch.refinenet4(layer_4_rn)
         path_3 = self.scratch.refinenet3(path_4, layer_3_rn)
@@ -112,4 +122,6 @@ class MidasNet(torch.nn.Module):
             align_corners=False,
         ).squeeze()
 
-        return out
+        out = out.view(B, N, 512, 512)
+
+        return out, scale_translation_factors

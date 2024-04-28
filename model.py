@@ -50,7 +50,7 @@ class AudioVisualModel(nn.Module):
                 #     if hasattr(c, 'weight'):
                 #         torch.nn.init.kaiming_normal_(c.weight)
 
-                if self.imageaudio_fusion_net.audio_attn_block:
+                if hasattr(self.imageaudio_fusion_net, 'audio_attn_block'):
                     self.imageaudio_fusion_net.audio_attn_block.requires_grad_(True)
 
             self.encoder_out_channels = midas_features
@@ -91,12 +91,16 @@ class AudioVisualModel(nn.Module):
 
         res = self.imageaudio_fusion_net(images, audio_cond)
         # res = self.sigmoid(res)
-        res = self.relu(res)
 
         if self.args.use_midas:
-            res = 1 / (res + 1e-5)
+            disparity, scale_translation_factors = res
+            depth = 1 / (disparity + 1e-5)
+            return depth, scale_translation_factors
 
-        return res
+        else:
+            # TODO: Rewrite code so you could use UNET and decode depth maps, scale and translation factors
+            res = self.relu(res)
+            return res
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -114,6 +118,12 @@ if __name__ == "__main__":
     parser.add_argument("--backbone_freeze", default=False, type=bool)
     parser.add_argument("--backbone_pretrained", default=True, type=bool)
     parser.add_argument("--audio_attn_block", default=False, type=bool)
+    parser.add_argument("--dataset_path", default='data/', type=str)
+    parser.add_argument("--lr", default=1e-4, type=float)
+    parser.add_argument("--mixed_precision", default=True, type=bool)
+    parser.add_argument("--use_midas", default=False, type=bool)
+    parser.add_argument("--midas_checkpoint", default="./midas_v21_384.pt", type=str)
+    parser.add_argument("--midas_freeze", default=True, type=bool)
 
     args = parser.parse_args()
 
@@ -121,9 +131,13 @@ if __name__ == "__main__":
     model.to(args.device)
     breakpoint()
 
-    img = torch.rand(16, 512, 512, 3).to(args.device)
-    audio = torch.rand(16, 1, 10000).to(args.device)
-    speaker_pos = torch.rand(16, 3).to(args.device)
-    mic_pos = torch.rand(16, 3).to(args.device)
+    # midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+    imgs = torch.rand(args.batch_size, 8, 3, 256, 256).to(args.device) # image is 256x256 after midas transforms
+    # imgs = imgs.view(-1, 512, 512, 3)
+    # rgb = midas_transforms.small_transform(imgs).squeeze()
+    # imgs = imgs.view(args.batch_size, 8, 512, 512, 3)
+    audio = torch.rand(args.batch_size, 1, 10000).to(args.device)
+    speaker_pos = torch.rand(args.batch_size, 3).to(args.device)
+    mic_pos = torch.rand(args.batch_size, 3).to(args.device)
 
-    out = model(img, audio, speaker_pos, mic_pos)
+    out = model(imgs, audio, speaker_pos, mic_pos)
