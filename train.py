@@ -53,6 +53,18 @@ def loss_log(depth_pred, depth_gt):
     
 def depth_loss(depth_pred, depth_gt):
     return loss_log(depth_pred, depth_gt)
+    
+def scaled_depth_loss(depth_pred, depth_gt):
+    B = depth_pred.shape[0]
+    eps = 1e-5
+    torch.nn.functional.relu(depth_gt, inplace=True) # clip negative values
+    depth_pred_1d = depth_pred.view(B, -1)
+    depth_gt_1d = depth_gt.view(B, -1)
+    pred_log = torch.log(depth_pred_1d + eps)
+    gt_log = torch.log(depth_gt_1d + eps)
+    losses = pred_log - gt_log
+    losses = losses * losses
+    return (1 / B) * torch.sum(losses)
 
 class CustomImageDataset(Dataset):
     def __init__(self, args, use_world=False):
@@ -120,11 +132,14 @@ def train_model(args):
         print(f"Succesfully loaded iter {start_iter}")
         
     print("Starting training !")
+    train_loader = iter(dataloader)
+
     for step in range(start_iter, args.max_iter):
         iter_start_time = time.time()
         read_start_time = time.time()
         
-        train_loader = iter(dataloader)
+        if step % len(dataloader) == 0: # completed an epoch
+            train_loader = iter(dataloader)
 
         with torch.cuda.amp.autocast(args.mixed_precision):
             rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
@@ -137,11 +152,15 @@ def train_model(args):
 
             read_time = time.time() - read_start_time
 
-            depths_pred = model(rgb, audio, speaker_pos, mic_pos)
+            depths_pred, transforms = model(rgb, audio, speaker_pos, mic_pos) # depths_pred: (B, 8, 512, 512), transforms: (B, 2, 8)
+            scales = transforms[:, 0].unsqueeze(2).unsqueeze(3) # (B, 8, 1, 1)
+            translations = transforms[:, 1].unsqueeze(2).unsqueeze(3) # (B, 8, 1, 1)
+            depths_pred = depths_pred * scales + translations # (B, 8, 512, 512)
+            
 
         # depths_pred = depths_pred.to(dtype=torch.float32)
         # depths_gt = depths_gt.to(dtype=torch.float32)
-            loss = depth_loss(depths_pred, depths_gt)
+            loss = scaled_depth_loss(depths_pred, depths_gt)
 
         optimizer.zero_grad()
         scaler.scale(loss).backward()
