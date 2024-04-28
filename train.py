@@ -167,14 +167,14 @@ def train_model(args):
         scaler.step(optimizer)
         scaler.update()
 
-        img = depths_pred.detach().cpu().numpy()
-        img_gt = depths_gt.detach().cpu().numpy()
-        rgb_img_gt = rgb.permute(0,2,3,1).detach().cpu().numpy()
 
-        breakpoint()
-        plt.imsave(f"rgb_gt_images/img_{step}.png", rgb_img_gt[0,...])
-        plt.imsave(f"pred_images/img_{step}.png", img[0,...])
-        plt.imsave(f"gt_images/gt_img_{step}.png", img_gt[0,...])
+        if step % 100 == 0:
+            img = depths_pred.detach().cpu().numpy()
+            img_gt = depths_gt.detach().cpu().numpy()
+            rgb_img_gt = rgb.permute(0,2,3,1).detach().cpu().numpy()
+            plt.imsave(f"rgb_gt_images/img_{step}.png", rgb_img_gt[0,...])
+            plt.imsave(f"pred_images/img_{step}.png", img[0,...])
+            plt.imsave(f"gt_images/gt_img_{step}.png", img_gt[0,...])
 
         total_time = time.time() - start_time
         iter_time = time.time() - iter_start_time

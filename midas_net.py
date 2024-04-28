@@ -79,7 +79,6 @@ class MidasNet(torch.nn.Module):
         """
 
         B, N, C, H, W = x.shape
-        breakpoint()
 
         x = x.view(-1, C, H, W)
 
@@ -102,7 +101,6 @@ class MidasNet(torch.nn.Module):
         scale_translation_factors = self.scale_translation_net(av_fusion_vec)
 
         scale_translation_factors = scale_translation_factors.view(B, 2, -1)
-        breakpoint()
         scale_translation_factors[:, 0, :] = torch.nn.functional.relu(scale_translation_factors[:, 0, :]) # resolve to positive scaling factors
         # translations = scale_translation_factors[:, 8:]
 
