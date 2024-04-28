@@ -122,11 +122,14 @@ def train_model(args):
         print(f"Succesfully loaded iter {start_iter}")
         
     print("Starting training !")
+    train_loader = iter(dataloader)
+
     for step in range(start_iter, args.max_iter):
         iter_start_time = time.time()
         read_start_time = time.time()
         
-        train_loader = iter(dataloader)
+        if step % len(dataloader) == 0: # completed an epoch
+            train_loader = iter(dataloader)
 
         with torch.cuda.amp.autocast(args.mixed_precision):
             rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
