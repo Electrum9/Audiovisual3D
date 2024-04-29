@@ -1,3 +1,5 @@
+events.out.*
+runs/*
 *.png
 *.pth
 *.pt
