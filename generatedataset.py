@@ -51,7 +51,7 @@ def get_datapoint(pt_path):
 
 def get_random_datapoint():
     pt_path = '/mnt/Mercury2/CMU16825/soundcam/Audiovisual3D/fins/dataset/convolved_audio_pt'
-    paths = glob.glob(f"{pt_path}/conference*.pt") + glob.glob(f"{pt_path}/treatedroom*.pt")
+    paths = glob.glob(f"{pt_path}/conference*.pt") #+ glob.glob(f"{pt_path}/treatedroom*.pt")
     data_pt = get_datapoint(paths[int(random() * len(paths))])
     
     while data_pt is None:
@@ -88,7 +88,7 @@ def get_random_cameras(boundaries):
     elev = choose_random(22.5, 45.0)
     Rs = torch.zeros((8, 3, 3), device = device)
     for i in range(4):
-        azim = 0 + 90 *i
+        azim = azim_start + 90 *i
         Rs[i * 2] = get_R(camera_loc, azim, elev)[0]
         Rs[i * 2 + 1] = get_R(camera_loc, azim, -elev)[0]
         
@@ -148,11 +148,14 @@ def convert2world(pt):
     return pt
 
 def rgb_depth_demo(rgb, depth_map):
-    for i in range(len(rgb)):
-        img = torch.hstack((torch.tensor(rgb[i])/torch.tensor(rgb[i]).max(), depth_map[i].unsqueeze(-1).repeat(1,1,3)/depth_map[i].max()))
-        plt.imshow(img)
-        plt.savefig(f'{i}.png')
-        
+    plt.figure(figsize=(21, 7))
+    img = torch.hstack([torch.tensor(img/img.max()) for img in rgb])
+    depth_map = torch.hstack([d/d.max() for d in depth_map]).unsqueeze(-1).repeat(1,1,3)
+    demo = torch.vstack((img,depth_map))
+    plt.imshow(demo)
+    plt.axis('off')
+    plt.savefig('test.png')
+    
 def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries, mesh):
     
     return (torch.tensor(audio, device = device), torch.tensor(origin, device = device), torch.tensor(mic_loc, device = device), torch.tensor(spaker_loc, device = device), torch.tensor(boundaries, device = device), mesh.to(device))
