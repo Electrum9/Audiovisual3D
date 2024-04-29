@@ -40,7 +40,7 @@ class MidasNet(torch.nn.Module):
 
         if audio_attn_block:
             # Spatial Excitation Block: Outputs Bx1xHxW set of scaling factors in interval [0, 1]
-            self.audio_attn_block = nn.Sequential(nn.Conv2d(in_channels=features*8,
+            self.audio_attn_block = nn.Sequential(nn.Conv2d(in_channels=features,
                                                      out_channels=1, 
                                                      kernel_size=1,
                                                      ), 
@@ -67,6 +67,12 @@ class MidasNet(torch.nn.Module):
             nn.ReLU(True) if non_negative else nn.Identity(),
         )
 
+        self.fusion_conv = nn.Sequential(nn.Conv2d(in_channels=features,
+                                                 out_channels=features, 
+                                                 kernel_size=1,
+                                                 ), 
+                                       )
+
         if path:
             self.load(path)
 
@@ -88,13 +94,14 @@ class MidasNet(torch.nn.Module):
         layer_1_rn = self.scratch.layer1_rn(layer_1)
         layer_2_rn = self.scratch.layer2_rn(layer_2)
         layer_3_rn = self.scratch.layer3_rn(layer_3)
-        layer_4_rn = self.scratch.layer4_rn(layer_4)
+        layer_4_rn_og = self.scratch.layer4_rn(layer_4)
 
         if self.audio_attn_block:
-            excitation = self.audio_attn_block(layer_4_rn) # Bx1xHxW set of attention scores in [0,1]
-            layer_4_rn = excitation * layer_4_rn + (1 - excitation) * audio_cond.view(*audio_cond.shape, 1, 1)
+            excitation = self.audio_attn_block(layer_4_rn_og) # Bx1xHxW set of attention scores in [0,1]
+            layer_4_rn = excitation * layer_4_rn_og + (1 - excitation) * audio_cond.view(*audio_cond.shape, 1, 1)
         else:
-            layer_4_rn = layer_4_rn + audio_cond.view(*audio_cond.shape, 1, 1) # broadcast along spatial dims
+            intermediate = layer_4_rn_og + audio_cond.view(*audio_cond.shape, 1, 1) # broadcast along spatial dims
+            layer_4_rn = self.fusion_conv(intermediate.clone())
 
         path_4 = self.scratch.refinenet4(layer_4_rn)
         path_3 = self.scratch.refinenet3(path_4, layer_3_rn)

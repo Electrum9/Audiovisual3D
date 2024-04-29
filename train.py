@@ -7,6 +7,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from torchvision.utils import save_image
 from torchvision.transforms import Resize
+from torch.utils.tensorboard import SummaryWriter
+import torchvision
 
 import imageio
 import numpy as np
@@ -15,7 +17,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from model import AudioVisualModel
 
-torch.autograd.set_detect_anomaly(False)
+torch.autograd.set_detect_anomaly(True)
 
 def loss_sstrim(diff):
     B, M = diff.shape
@@ -33,6 +35,9 @@ def loss_midas(disparity_pred, depth_gt):
     # output: losses of shape (B,)
     B = depth_gt.shape[0]
     torch.nn.functional.relu(depth_gt, inplace=True) # clip negative values
+
+    if torch.any(torch.isnan(disparity_pred)).item():
+        breakpoint()
 
     disparity_pred_1d = disparity_pred.view(B, -1)
     disparity_gt_1d = 1 / (depth_gt.view(B, -1) + 1e-5) # make this disparity
@@ -103,10 +108,10 @@ class CustomImageDataset(Dataset):
         audio = feed_dict['audio'].astype(np.float32)
         rgb = feed_dict['rgb'].astype(np.float32)
         if self.args.use_midas:
-            rgb = self.midas_transforms.small_transform(rgb).squeeze()
+            rgb = torch.stack([self.midas_transforms.small_transform(x).squeeze() for x in rgb], dim=1)
         else:
             rgb = torch.from_numpy(rgb)
-            rgb = rgb.permute(2, 0, 1) # (B, 3, H, W)
+            rgb = rgb.permute(0, 3, 1, 2) # (8, H, W, 3)
         micloc = torch.from_numpy(feed_dict['micloc_camera'])
         speakerloc = torch.from_numpy(feed_dict['speakerloc_camera'].astype(np.float32))
         depth = torch.from_numpy(feed_dict['depth'].astype(np.float32))
@@ -136,6 +141,8 @@ def train_model(args):
     start_iter = 0
     start_time = time.time()
 
+    writer = SummaryWriter()
+
     scaler = torch.cuda.amp.GradScaler()
 
     if args.load_checkpoint:
@@ -161,6 +168,14 @@ def train_model(args):
         with torch.cuda.amp.autocast(args.mixed_precision):
             rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
 
+            rgb = rgb.permute(0, 2, 1, 3, 4)
+            rgb = rgb.reshape(-1, *rgb.shape[2:])
+            audio = audio.unsqueeze(2).expand(-1, 8, -1, -1)
+            audio = audio.reshape(-1, *audio.shape[2:])
+            speaker_pos = speaker_pos.reshape(-1, *speaker_pos.shape[2:])
+            mic_pos = mic_pos.reshape(-1, *mic_pos.shape[2:])
+            depths_gt = depths_gt.reshape(-1, *depths_gt.shape[2:])
+
             rgb = resize(rgb.to(args.device))
             audio = audio.to(args.device)
             speaker_pos = speaker_pos.to(args.device)
@@ -172,6 +187,18 @@ def train_model(args):
 
             depths_pred = model(rgb, audio, speaker_pos, mic_pos)
 
+            if (step % 50) == 0:
+                save_image(rgb / rgb.max(), f"gt_images/gt_img_rgb{step}.png")
+                depths_gt_normalized = (depths_gt - depths_gt.min()).unsqueeze(1).expand(-1, 3, -1, -1) / (depths_gt.max() - depths_gt.min())
+                save_image(depths_gt_normalized, f"gt_images/gt_img{step}.png")
+                actual_depths_pred = 1 / (depths_pred + 1e-5)
+                depths_pred_normalized = (actual_depths_pred - actual_depths_pred.min()).unsqueeze(1).expand(-1, 3, -1, -1) / (actual_depths_pred.max() - actual_depths_pred.min())
+                save_image(depths_pred_normalized, f"pred_images/img_{step}.png")
+                img_pred = torchvision.utils.make_grid(depths_pred_normalized)
+                img_gt = torchvision.utils.make_grid(depths_gt_normalized)
+                writer.add_image('Depth Pred', img_pred)
+                writer.add_image('Depth GT', img_gt)
+
         # depths_pred = depths_pred.to(dtype=torch.float32)
         # depths_gt = depths_gt.to(dtype=torch.float32)
             # loss = depth_loss(depths_pred, depths_gt)
@@ -182,10 +209,7 @@ def train_model(args):
         scaler.step(optimizer)
         scaler.update()
 
-        save_image(rgb / rgb.max(), f"gt_images/gt_img_rgb{step}.png")
-        save_image((depths_gt - depths_gt.min()).unsqueeze(1).expand(-1, 3, -1, -1) / (depths_gt.max() - depths_gt.min()), f"gt_images/gt_img{step}.png")
-        depths_pred = 1 / (depths_pred + 1e-5)
-        save_image((depths_pred - depths_gt.min()).unsqueeze(1).expand(-1, 3, -1, -1) / (depths_pred.max() - depths_pred.min()), f"pred_images/img_{step}.png")
+
         # rgb_img = rgb.detach().cpu().numpy()
         # rgb_img /= rgb_img.max()
         # img /= img.max()
@@ -216,7 +240,11 @@ def train_model(args):
             "[%4d/%4d]; ttime: %.0f (%.2f, %.2f); loss: %.3f"
             % (step, args.max_iter, total_time, read_time, iter_time, loss_vis)
         )
+
+        writer.add_scalar('Loss/train', loss_vis, step) 
+
     
+    writer.close()
     print("Done!")
 
 

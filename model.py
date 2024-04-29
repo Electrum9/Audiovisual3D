@@ -38,7 +38,7 @@ class AudioVisualModel(nn.Module):
         self.args = args
         if args.use_midas:
             midas_features = 256
-            self.imageaudio_fusion_net = MidasNet(features=midas_features)
+            self.imageaudio_fusion_net = MidasNet(features=midas_features, audio_attn_block=args.audio_attn_block)
             midas_checkpoint = torch.load(args.midas_checkpoint)
             torch_liberator.load_partial_state(self.imageaudio_fusion_net, model_state_dict=midas_checkpoint)
 
@@ -52,6 +52,13 @@ class AudioVisualModel(nn.Module):
 
                 if self.imageaudio_fusion_net.audio_attn_block:
                     self.imageaudio_fusion_net.audio_attn_block.requires_grad_(True)
+
+                # self.imageaudio_fusion_net.scratch.refinenet4.requires_grad_(True)
+                # self.imageaudio_fusion_net.scratch.refinenet3.requires_grad_(True)
+                # self.imageaudio_fusion_net.scratch.refinenet2.requires_grad_(True)
+                # self.imageaudio_fusion_net.scratch.refinenet1.requires_grad_(True)
+                # self.imageaudio_fusion_net.scratch.output_conv.requires_grad_(True)
+                self.imageaudio_fusion_net.fusion_conv.requires_grad_(True)
 
             self.encoder_out_channels = midas_features
         else:
