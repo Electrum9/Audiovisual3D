@@ -93,8 +93,8 @@ class AudioVisualModel(nn.Module):
         # res = self.sigmoid(res)
         res = self.relu(res)
 
-        if self.args.use_midas:
-            res = 1 / (res + 1e-5)
+        # if self.args.use_midas:
+        #     res = 1 / (res + 1e-5)
 
         return res
 

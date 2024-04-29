@@ -94,7 +94,7 @@ class MidasNet(torch.nn.Module):
             excitation = self.audio_attn_block(layer_4_rn) # Bx1xHxW set of attention scores in [0,1]
             layer_4_rn = excitation * layer_4_rn + (1 - excitation) * audio_cond.view(*audio_cond.shape, 1, 1)
         else:
-            layer_4_rn = layer_4_rn + audio_cond.view(*audio_cond.shape, 1, 1) # broadcast along spatial dims
+            layer_4_rn = layer_4_rn + 0*audio_cond.view(*audio_cond.shape, 1, 1) # broadcast along spatial dims
 
         path_4 = self.scratch.refinenet4(layer_4_rn)
         path_3 = self.scratch.refinenet3(path_4, layer_3_rn)
@@ -107,7 +107,7 @@ class MidasNet(torch.nn.Module):
 
         out = torch.nn.functional.interpolate(
             out.unsqueeze(1),
-            size=(512, 512),
+            size=(256, 256),
             mode="bicubic",
             align_corners=False,
         ).squeeze()

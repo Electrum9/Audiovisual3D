@@ -1,9 +1,12 @@
 import argparse
 import glob
+from math import isnan
 import os
 import time
 from pathlib import Path
 import matplotlib.pyplot as plt
+from torchvision.utils import save_image
+from torchvision.transforms import Resize
 
 import imageio
 import numpy as np
@@ -21,18 +24,38 @@ def loss_sstrim(diff):
     trimmed = diff_abs_sorted[:, :int(M * .8)]
     return 1 / (2 * M) * torch.sum(trimmed, dim = 1)
     
-def loss_reg(diff, grad):
+def loss_reg(diff):
     # TODO: not sure of shape of grad
     return 0
 
-def loss_midas(depth_pred, depth_gt, grad):
+def loss_midas(disparity_pred, depth_gt):
     # input: pred and gt of shape (B, H, W), grad of shape ???
     # output: losses of shape (B,)
-    B = depth_pred.shape[0]
-    depth_pred_1d = depth_pred.view(B, -1)
-    depth_gt_1d = depth_gt.view(B, -1)
-    diff = depth_pred_1d - depth_gt_1d
-    return loss_sstrim(diff) + loss_reg(diff, grad)
+    B = depth_gt.shape[0]
+    torch.nn.functional.relu(depth_gt, inplace=True) # clip negative values
+
+    disparity_pred_1d = disparity_pred.view(B, -1)
+    disparity_gt_1d = 1 / (depth_gt.view(B, -1) + 1e-5) # make this disparity
+
+    translation_pred = torch.median(disparity_pred_1d, dim=-1)[0].unsqueeze(-1)
+    scale_pred = torch.norm(disparity_pred_1d - translation_pred, dim=-1, p=1).unsqueeze(-1)
+    disparity_pred_1d = disparity_pred_1d.shape[-1] * (((disparity_pred_1d - translation_pred) / (scale_pred + 1e-5))) 
+
+    translation_gt = torch.median(disparity_gt_1d, dim=-1)[0].unsqueeze(-1)
+    scale_gt = torch.norm(disparity_gt_1d - translation_gt, dim=-1, p=1).unsqueeze(-1)
+    disparity_gt_1d = disparity_gt_1d.shape[-1] * (disparity_gt_1d - translation_gt) / (scale_gt + 1e-5)
+
+    diff = disparity_pred_1d - disparity_gt_1d
+
+    loss = loss_sstrim(diff) 
+    reg = loss_reg(diff)
+
+    total = torch.mean(loss + reg)
+
+    if torch.isnan(total):
+        breakpoint()
+
+    return total
     
 def loss_log(depth_pred, depth_gt):
     B = depth_pred.shape[0]
@@ -40,6 +63,9 @@ def loss_log(depth_pred, depth_gt):
     torch.nn.functional.relu(depth_gt, inplace=True) # clip negative values
     depth_pred_1d = depth_pred.view(B, -1)
     depth_gt_1d = depth_gt.view(B, -1)
+
+    breakpoint()
+    
     pred_log = torch.log(depth_pred_1d + eps)
     gt_log = torch.log(depth_gt_1d + eps)
     diff = pred_log - gt_log
@@ -120,20 +146,27 @@ def train_model(args):
         print(f"Succesfully loaded iter {start_iter}")
         
     print("Starting training !")
+
+    train_loader = iter(dataloader)
+
+    resize = Resize((256, 256))
+
     for step in range(start_iter, args.max_iter):
         iter_start_time = time.time()
         read_start_time = time.time()
         
-        train_loader = iter(dataloader)
+        if step % len(dataloader) == 0:
+            train_loader = iter(dataloader)
 
         with torch.cuda.amp.autocast(args.mixed_precision):
             rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
 
-            rgb = rgb.to(args.device)
+            rgb = resize(rgb.to(args.device))
             audio = audio.to(args.device)
             speaker_pos = speaker_pos.to(args.device)
             mic_pos = mic_pos.to(args.device)
-            depths_gt = depths_gt.to(args.device)
+            depths_gt = resize(depths_gt.to(args.device))
+            # depths_gt = depths_gt - depths_gt.min()
 
             read_time = time.time() - read_start_time
 
@@ -141,17 +174,26 @@ def train_model(args):
 
         # depths_pred = depths_pred.to(dtype=torch.float32)
         # depths_gt = depths_gt.to(dtype=torch.float32)
-            loss = depth_loss(depths_pred, depths_gt)
+            # loss = depth_loss(depths_pred, depths_gt)
+            loss = loss_midas(depths_pred, depths_gt)
 
         optimizer.zero_grad()
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
 
-        img = depths_pred.detach().cpu().numpy()
-        img_gt = depths_gt.detach().cpu().numpy()
-        plt.imsave(f"pred_images/img_{step}.png", img[0,...])
-        plt.imsave(f"gt_images/gt_img_{step}.png", img_gt[0,...])
+        save_image(rgb / rgb.max(), f"gt_images/gt_img_rgb{step}.png")
+        save_image((depths_gt - depths_gt.min()).unsqueeze(1).expand(-1, 3, -1, -1) / (depths_gt.max() - depths_gt.min()), f"gt_images/gt_img{step}.png")
+        depths_pred = 1 / (depths_pred + 1e-5)
+        save_image((depths_pred - depths_gt.min()).unsqueeze(1).expand(-1, 3, -1, -1) / (depths_pred.max() - depths_pred.min()), f"pred_images/img_{step}.png")
+        # rgb_img = rgb.detach().cpu().numpy()
+        # rgb_img /= rgb_img.max()
+        # img /= img.max()
+        # img_gt = depths_gt.detach().cpu().numpy()
+        # img_gt /= img_gt.max()
+        # plt.imsave(f"pred_images/img_{step}.png", img[0,...])
+        # plt.imsave(f"gt_images/gt_img_{step}.png", img_gt[0,...])
+        # plt.imsave(f"gt_images/gt_img_rgb{step}.png", rgb_img)
 
         total_time = time.time() - start_time
         iter_time = time.time() - iter_start_time
