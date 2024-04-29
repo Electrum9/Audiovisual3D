@@ -9,6 +9,7 @@ from torchvision.utils import save_image
 from torchvision.transforms import Resize
 from torch.utils.tensorboard import SummaryWriter
 import torchvision
+from torchvision.transforms import v2
 
 import imageio
 import numpy as np
@@ -98,6 +99,8 @@ class CustomImageDataset(Dataset):
             self.speakerloc_key = 'speakerloc_camera'
 
         self.midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+        self.resize = Resize((256, 256))
+        self.aug = v2.RandomChoice([v2.RandomResizedCrop(256, scale=(0.75,1)), v2.RandomErasing(p=1), v2.Lambda(lambda x: x + 0.5*torch.randn_like(x)), torch.nn.Identity()])
         self.args = args
 
     def __len__(self):
@@ -108,7 +111,7 @@ class CustomImageDataset(Dataset):
         audio = feed_dict['audio'].astype(np.float32)
         rgb = feed_dict['rgb'].astype(np.float32)
         if self.args.use_midas:
-            rgb = torch.stack([self.midas_transforms.small_transform(x).squeeze() for x in rgb], dim=1)
+            rgb = torch.stack([self.aug(self.midas_transforms.small_transform(x).squeeze()) for x in rgb], dim=1)
         else:
             rgb = torch.from_numpy(rgb)
             rgb = rgb.permute(0, 3, 1, 2) # (8, H, W, 3)
@@ -188,7 +191,8 @@ def train_model(args):
             depths_pred = model(rgb, audio, speaker_pos, mic_pos)
 
             if (step % 50) == 0:
-                save_image(rgb / rgb.max(), f"gt_images/gt_img_rgb{step}.png")
+                rgb_normalized = (rgb - rgb.min()) / (rgb.max() - rgb.min())
+                save_image(rgb_normalized, f"gt_images/gt_img_rgb{step}.png")
                 depths_gt_normalized = (depths_gt - depths_gt.min()).unsqueeze(1).expand(-1, 3, -1, -1) / (depths_gt.max() - depths_gt.min())
                 save_image(depths_gt_normalized, f"gt_images/gt_img{step}.png")
                 actual_depths_pred = 1 / (depths_pred + 1e-5)
@@ -196,6 +200,8 @@ def train_model(args):
                 save_image(depths_pred_normalized, f"pred_images/img_{step}.png")
                 img_pred = torchvision.utils.make_grid(depths_pred_normalized)
                 img_gt = torchvision.utils.make_grid(depths_gt_normalized)
+                img_rgb = torchvision.utils.make_grid(rgb)
+                writer.add_image('RGB', img_rgb)
                 writer.add_image('Depth Pred', img_pred)
                 writer.add_image('Depth GT', img_gt)
 
