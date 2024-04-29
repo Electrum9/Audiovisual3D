@@ -73,6 +73,8 @@ def apply_augmentation(image):
     return aug(image)
 
 def get_R(camera_loc, azim, elev):
+    azim *= math.pi/180
+    elev *= math.pi/180
     direc = [math.cos(elev) * math.sin(azim), math.sin(elev), math.cos(elev) * math.cos(azim)]
     R = pytorch3d.renderer.look_at_rotation(camera_loc, direc)
     return R
@@ -86,23 +88,23 @@ def get_random_cameras(boundaries):
     elev = choose_random(22.5, 45.0)
     Rs = torch.zeros((8, 3, 3), device = device)
     for i in range(4):
-        azim = azim_start + 90 * i
-        Rs[i * 2] = get_R(camera_loc, azim, elev)
-        Rs[i * 2 + 1] = get_R(camera_loc, azim, -elev)
-
+        azim = 0 + 90 *i
+        Rs[i * 2] = get_R(camera_loc, azim, elev)[0]
+        Rs[i * 2 + 1] = get_R(camera_loc, azim, -elev)[0]
+        
     cameras = pytorch3d.renderer.FoVPerspectiveCameras(
         R=Rs,
-        T=torch.inverse(Rs) @ camera_loc,
+        T=camera_loc.repeat(len(Rs),1),
         device=device
     )
     return cameras, camera_loc
     
 def get_rgb(mesh, cameras, renderer, lights):
-    rend = renderer(mesh, cameras=cameras, lights=lights)
+    rend = renderer(mesh.extend(len(cameras)), cameras=cameras, lights=lights)
     return (rend.detach().cpu().numpy()[..., :3] * 255).astype(np.uint8)
 
 def get_depth_map(mesh, cameras, rasterizer):
-    fragments = rasterizer(mesh, cameras=cameras)
+    fragments = rasterizer(mesh.extend(len(cameras)), cameras=cameras)
     depth_map = fragments.zbuf[:,:,:,0] #/ fragments.zbuf[:,:,:,0].max()
     return depth_map
     
@@ -129,7 +131,7 @@ def save_datapoint(rgb, depth_map, audio, camera_loc_world, mic_loc_world, mic_l
           'speakerloc_world': speaker_loc_world.detach().cpu().numpy(),
           'speakerloc_camera': speaker_loc_camera.detach().cpu().numpy()}
     
-    torch.save(pt, f"data/{i}.pt")
+    torch.save(pt, f"data-8/{i}.pt")
 
 def set_boundaries_buffer(boundaries, margin):
     size = boundaries[1] - boundaries[0]
@@ -145,6 +147,12 @@ def convert2world(pt):
     pt[:, 1] = 0
     return pt
 
+def rgb_depth_demo(rgb, depth_map):
+    for i in range(len(rgb)):
+        img = torch.hstack((torch.tensor(rgb[i])/torch.tensor(rgb[i]).max(), depth_map[i].unsqueeze(-1).repeat(1,1,3)/depth_map[i].max()))
+        plt.imshow(img)
+        plt.savefig(f'{i}.png')
+        
 def convert_to_torch(audio, origin, mic_loc, spaker_loc, boundaries, mesh):
     
     return (torch.tensor(audio, device = device), torch.tensor(origin, device = device), torch.tensor(mic_loc, device = device), torch.tensor(spaker_loc, device = device), torch.tensor(boundaries, device = device), mesh.to(device))
@@ -182,4 +190,5 @@ if __name__ == "__main__":
         mic_loc_camera = to_camera_coords(mic_loc_world, cameras)
         speaker_loc_camera = to_camera_coords(speaker_loc_world, cameras)
         
+        # rgb_depth_demo(rgb, depth_map)
         save_datapoint(rgb, depth_map, audio, camera_loc_world, mic_loc_world, mic_loc_camera, speaker_loc_world, speaker_loc_camera, i)
