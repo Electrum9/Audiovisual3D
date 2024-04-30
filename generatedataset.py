@@ -25,7 +25,7 @@ def get_datapoint(pt_path):
     elif room == 'treatedroom':
         room_obj_path = '/mnt/Mercury2/CMU16825/soundcam/scans/TreatedRoom/poly.obj'
     elif room == 'livingroom':
-        room_obj_path = '/mnt/Mercury2/CMU16825/soundcam/scans/LivingRoom/poly.obj'
+        room_obj_path = '/ix1/tibrahim/jil202/CMU16825/project/soundcam/scans/LivingRoom/poly.obj'
 
     if pt['audio_mic_pos'] is None:
         return None
@@ -50,8 +50,8 @@ def get_datapoint(pt_path):
     return (audio, np.array([[0, 0, 0]]), audio_mic_pos, speaker_pos, boundaries, mesh)
 
 def get_random_datapoint():
-    pt_path = '/mnt/Mercury2/CMU16825/soundcam/Audiovisual3D/fins/dataset/convolved_audio_pt'
-    paths = glob.glob(f"{pt_path}/conference*.pt") #+ glob.glob(f"{pt_path}/treatedroom*.pt")
+    pt_path = '/ix1/tibrahim/jil202/CMU16825/project/Audiovisual3D/fins/dataset/convolved_audio_pt'
+    paths = glob.glob(f"{pt_path}/livingroom*.pt") #+ glob.glob(f"{pt_path}/treatedroom*.pt")
     data_pt = get_datapoint(paths[int(random() * len(paths))])
     
     while data_pt is None:
@@ -131,7 +131,7 @@ def save_datapoint(rgb, depth_map, audio, camera_loc_world, mic_loc_world, mic_l
           'speakerloc_world': speaker_loc_world.detach().cpu().numpy(),
           'speakerloc_camera': speaker_loc_camera.detach().cpu().numpy()}
     
-    torch.save(pt, f"data-8/{i}.pt")
+    torch.save(pt, f"data-8-livingroom/_livingroom{i}.pt")
 
 def set_boundaries_buffer(boundaries, margin):
     size = boundaries[1] - boundaries[0]
@@ -187,11 +187,16 @@ if __name__ == "__main__":
         # rgb_aug = apply_augmentation(rgb)
         depth_map = get_depth_map(mesh, cameras, rasterizer).detach().cpu().squeeze()
         
+        while depth_map.min() == -1:
+            cameras, camera_loc_world = get_random_cameras(boundaries)
+            rgb = get_rgb(mesh, cameras, renderer, lights)
+            # rgb_aug = apply_augmentation(rgb)
+            depth_map = get_depth_map(mesh, cameras, rasterizer).detach().cpu().squeeze()
+            
         mic_loc_world = convert2world(mic_loc)
         speaker_loc_world = convert2world(speaker_loc)
         
         mic_loc_camera = to_camera_coords(mic_loc_world, cameras)
         speaker_loc_camera = to_camera_coords(speaker_loc_world, cameras)
-        
         # rgb_depth_demo(rgb, depth_map)
         save_datapoint(rgb, depth_map, audio, camera_loc_world, mic_loc_world, mic_loc_camera, speaker_loc_world, speaker_loc_camera, i)
