@@ -1,3 +1,4 @@
+*Zone.Identifier*
 events.out.*
 runs/*
 *.png
@@ -8,6 +9,7 @@ data/*
 *lprof*
 dataset/*
 fins/checkpoints/*
+runs/Apr29_17-13-11_DESKTOP-NVATNGM/events.out.tfevents.1714425191.DESKTOP-NVATNGM.84662.0
 
 ## PYTHON
 # Byte-compiled / optimized / DLL files
