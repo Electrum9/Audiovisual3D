@@ -4,12 +4,12 @@ import os
 import time
 from pathlib import Path
 import matplotlib.pyplot as plt
-
+import pdb
 import imageio
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-
+import torch.nn.functional as F
 from model import AudioVisualModel
 
 torch.autograd.set_detect_anomaly(False)
@@ -67,10 +67,9 @@ def scaled_depth_loss(depth_pred, depth_gt):
     return (1 / B) * torch.sum(losses)
 
 class CustomImageDataset(Dataset):
-    def __init__(self, args, use_world=False):
+    def __init__(self, args, use_world=True):
         pt_dir = args.dataset_path
         self.pt_files = list(Path(pt_dir).glob('*.pt'))
-
         if use_world:
             self.micloc_key = 'micloc_world'
             self.speakerloc_key = 'speakerloc_world'
@@ -88,13 +87,14 @@ class CustomImageDataset(Dataset):
         feed_dict = torch.load(self.pt_files[idx])
         audio = feed_dict['audio'].astype(np.float32)
         rgb = feed_dict['rgb'].astype(np.float32)
-        if self.args.use_midas:
-            rgb = self.midas_transforms.small_transform(rgb).squeeze()
+        if self.args.use_midas:            
+            rgb = torch.tensor(np.array([self.midas_transforms.small_transform(img).squeeze() for img in rgb]))
+            
         else:
             rgb = torch.from_numpy(rgb)
-            rgb = rgb.permute(2, 0, 1) # (B, 3, H, W)
-        micloc = torch.from_numpy(feed_dict['micloc_camera'])
-        speakerloc = torch.from_numpy(feed_dict['speakerloc_camera'].astype(np.float32))
+            rgb = rgb.permute(-1, 0, 1, 2) # (B, 3, H, W)
+        micloc = torch.from_numpy(feed_dict[self.micloc_key])
+        speakerloc = torch.from_numpy(feed_dict[self.speakerloc_key].astype(np.float32))
         depth = torch.from_numpy(feed_dict['depth'].astype(np.float32))
         return rgb, audio, speakerloc, micloc, depth
 
@@ -143,7 +143,6 @@ def train_model(args):
 
         with torch.cuda.amp.autocast(args.mixed_precision):
             rgb, audio, speaker_pos, mic_pos, depths_gt = next(train_loader)
-
             rgb = rgb.to(args.device)
             audio = audio.to(args.device)
             speaker_pos = speaker_pos.to(args.device)
@@ -156,26 +155,28 @@ def train_model(args):
             scales = transforms[:, 0].unsqueeze(2).unsqueeze(3) # (B, 8, 1, 1)
             translations = transforms[:, 1].unsqueeze(2).unsqueeze(3) # (B, 8, 1, 1)
             depths_pred = depths_pred * scales + translations # (B, 8, 512, 512)
+            if step % 100 == 0:
+                img = depths_pred.detach().cpu()
+                img_gt = depths_gt.detach().cpu()
+                rgb_img_gt = rgb.detach().cpu()
+                img = plt.get_cmap('viridis')((img[0,0] - img[0,0].min())/(img[0,0].max() - img[0,0].min()))
+                showimg = (rgb_img_gt[0,0,...] + abs((rgb_img_gt[0,0,...].min()))).unsqueeze(0)
+                showimg = F.interpolate(showimg, [512, 512], mode='bilinear', align_corners=False).squeeze().permute(1,2,0)
+                img_gt = plt.get_cmap('viridis')((img_gt[0,0] - img_gt[0,0].min())/(img_gt[0,0].max() - img_gt[0,0].min()))
+                output = torch.hstack((showimg/showimg.max(), torch.tensor(img_gt[...,:3]), torch.tensor(img[...,:3])))
+                plt.imsave(f"rgb_gt_images/img_{step}.png", output.numpy())
             
 
         # depths_pred = depths_pred.to(dtype=torch.float32)
         # depths_gt = depths_gt.to(dtype=torch.float32)
+            
             loss = scaled_depth_loss(depths_pred, depths_gt)
 
         optimizer.zero_grad()
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
-
-
-        if step % 100 == 0:
-            img = depths_pred.detach().cpu().numpy()
-            img_gt = depths_gt.detach().cpu().numpy()
-            rgb_img_gt = rgb.permute(0,2,3,1).detach().cpu().numpy()
-            plt.imsave(f"rgb_gt_images/img_{step}.png", rgb_img_gt[0,...])
-            plt.imsave(f"pred_images/img_{step}.png", img[0,...])
-            plt.imsave(f"gt_images/gt_img_{step}.png", img_gt[0,...])
-
+            
         total_time = time.time() - start_time
         iter_time = time.time() - iter_start_time
 
@@ -189,14 +190,14 @@ def train_model(args):
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                 },
-                f"checkpoint_av.pth",
+                f"checkpoint_av_{step}.pth",
             )
                     
 
         print(
             "[%4d/%4d]; ttime: %.0f (%.2f, %.2f); loss: %.3f"
             % (step, args.max_iter, total_time, read_time, iter_time, loss_vis)
-        )
+        ) 
     
     print("Done!")
 
@@ -217,10 +218,10 @@ if __name__ == "__main__":
     parser.add_argument("--backbone_freeze", default=False, type=bool)
     parser.add_argument("--backbone_pretrained", default=True, type=bool)
     parser.add_argument("--audio_attn_block", default=False, type=bool)
-    parser.add_argument("--dataset_path", default='data/', type=str)
+    parser.add_argument("--dataset_path", default='data-8-5000/', type=str)
     parser.add_argument("--lr", default=1e-4, type=float)
     parser.add_argument("--mixed_precision", default=True, type=bool)
-    parser.add_argument("--use_midas", default=False, type=bool)
+    parser.add_argument("--use_midas", default=True, type=bool)
     parser.add_argument("--midas_checkpoint", default="./midas_v21_384.pt", type=str)
     parser.add_argument("--midas_freeze", default=True, type=bool)
 

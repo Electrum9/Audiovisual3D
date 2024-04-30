@@ -1,3 +1,4 @@
+from einops import rearrange
 import argparse
 import torch
 from torch import nn
@@ -6,7 +7,7 @@ from unet import Unet
 from fins.fins.model import FilteredNoiseShaper, Encoder
 from fins.fins.utils.utils import load_config
 import torch_liberator
-
+import pdb
 from midas_net import MidasNet
 
 # shape defs:
@@ -79,23 +80,21 @@ class AudioVisualModel(nn.Module):
         # audio shape: (B, 1, num_samples)
         # speaker pos shape: (B, 1, 1, 3)
         # mic pos shape: (B, 1, 1, 3)
-
-        channel_latent = self.fins(audio) # Bx128
-
-        combined = torch.cat([channel_latent,           # Bx128
-                              speaker_pos.squeeze(),    # Bx3
-                              mic_pos.squeeze()],       # Bx3
-                              dim=-1) 
-
+        channel_latent = self.fins(audio)               # Bx128
+        combined = torch.cat([channel_latent.float(),           # Bx128
+                                speaker_pos.squeeze().float(),    # Bx3
+                                mic_pos.squeeze().float()],       # Bx3
+                                dim=-1) 
         audio_cond = self.audio_cond_net(combined)
-
+        
+        
         res = self.imageaudio_fusion_net(images, audio_cond)
         # res = self.sigmoid(res)
 
         if self.args.use_midas:
             disparity, scale_translation_factors = res
             depth = 1 / (disparity + 1e-5)
-            return depth, scale_translation_factors
+            return depth, scale_translation_factors.relu()
 
         else:
             # TODO: Rewrite code so you could use UNET and decode depth maps, scale and translation factors
