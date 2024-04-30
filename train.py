@@ -62,12 +62,17 @@ def conv_gauss(img, kernel):
 def laplacian_pyramid(img, kernel, max_levels=3):
     current = img
     pyr = []
+    Gx = torch.tensor([[2.0, 0.0, -2.0], [4.0, 0.0, -4.0], [2.0, 0.0, -2.0]])
+    Gy = torch.tensor([[2.0, 4.0, 2.0], [0.0, 0.0, 0.0], [-2.0, -4.0, -2.0]])
     for level in range(max_levels):
         filtered = conv_gauss(current, kernel)
         down = downsample(filtered)
         up = upsample(down)
         diff = current-up
-        pyr.append(diff)
+        grad_x = abs(conv_gauss(diff, Gx))
+        grad_y = abs(conv_gauss(diff, Gy))
+        miniloss = grad_x + grad_y
+        pyr.append(miniloss)
         current = down
     return pyr
 
